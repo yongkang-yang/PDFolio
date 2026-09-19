@@ -38,6 +38,11 @@ public final class PDFExporter {
     private let sources: [SourceID: SourceInfo]
     private let assets: AssetLibrary
     private var openDocuments: [SourceID: PDFDocument] = [:]
+    /// Output size after which a flattened export starts a new chunk (see
+    /// `writeFlattened`). Exposed so checks can force several chunks.
+    public var flattenChunkBytes = 32 * 1024 * 1024
+    /// Memory growth after which a flattened export starts a new chunk.
+    public var flattenChunkMemoryGrowth = 64 * 1024 * 1024
 
     public init(sources: [SourceID: SourceInfo], assets: AssetLibrary) {
         self.sources = sources
@@ -121,15 +126,36 @@ public final class PDFExporter {
         return output
     }
 
-    /// Flattened path: redraws each page into a streaming PDF context. Page
-    /// content is replayed as vector drawing, not rasterized; only one page is
-    /// in flight at a time.
+    /// Flattened path: redraws each page into a PDF context. Page content is
+    /// replayed as vector drawing, not rasterized.
+    ///
+    /// A `CGPDFContext` holds on to data proportional to everything written
+    /// until it is closed, and drawing pages makes PDFKit cache decoded images
+    /// in the source documents; for scans that is tens of MB per page. So the
+    /// output is written in chunks, closing the context and reopening the
+    /// sources whenever a chunk reaches `flattenChunkBytes` of output or the
+    /// process has grown by `flattenChunkMemoryGrowth` since the chunk
+    /// started. Light documents never hit either limit, so shared images
+    /// stay shared in one chunk. The chunks are
+    /// then joined by copying pages (which doesn't decode anything). Most
+    /// documents fit in one chunk and are written exactly as before.
     private func writeFlattened(_ pages: [PageRef], to url: URL, progress: ((Int, Int) -> Bool)?) throws {
-        guard let context = CGContext(url as CFURL, mediaBox: nil, nil) else {
-            throw ExportError.writeFailed(url)
+        var chunks: [URL] = []
+        defer {
+            if chunks.count > 1 { chunks.forEach { try? FileManager.default.removeItem(at: $0) } }
         }
-        defer { context.closePDF() }
+        var writer: ChunkWriter?
+        var chunkStartFootprint = 0
+
         for (i, ref) in pages.enumerated() {
+            if writer == nil {
+                let chunkURL = chunks.isEmpty ? url : url.appendingPathExtension("chunk\(chunks.count)")
+                guard let next = ChunkWriter(url: chunkURL) else { throw ExportError.writeFailed(url) }
+                writer = next
+                chunks.append(chunkURL)
+                chunkStartFootprint = MemoryFootprint.bytes()
+            }
+            let context = writer!.context
             try autoreleasepool {
                 let page = try sourcePage(ref)
                 let originalRotation = page.rotation
@@ -150,8 +176,85 @@ public final class PDFExporter {
                 context.restoreGState()
                 context.endPDFPage()
             }
-            if let progress, !progress(i + 1, pages.count) { throw ExportError.cancelled }
+            let chunkFull = writer!.bytesWritten >= flattenChunkBytes
+                || MemoryFootprint.bytes() - chunkStartFootprint >= flattenChunkMemoryGrowth
+            if chunkFull, i < pages.count - 1 {
+                writer!.close()
+                writer = nil
+                openDocuments.removeAll()
+            }
+            if let progress, !progress(i + 1, pages.count) {
+                writer?.close()
+                throw ExportError.cancelled
+            }
         }
+        writer?.close()
+        writer = nil
+
+        guard chunks.count > 1 else { return }
+        // The first chunk was written at `url`; move it aside and join.
+        let first = url.appendingPathExtension("chunk0")
+        try FileManager.default.moveItem(at: url, to: first)
+        chunks[0] = first
+        let output = PDFDocument()
+        for chunk in chunks {
+            guard let document = PDFDocument(url: chunk) else { throw ExportError.writeFailed(url) }
+            for index in 0..<document.pageCount {
+                try autoreleasepool {
+                    guard let page = document.page(at: index)?.copy() as? PDFPage else { throw ExportError.writeFailed(url) }
+                    output.insert(page, at: output.pageCount)
+                }
+            }
+        }
+        guard output.write(to: url) else { throw ExportError.writeFailed(url) }
+    }
+}
+
+/// A PDF context writing to a file through a callback consumer that counts
+/// the bytes written, so a flattened export knows when to start a new chunk.
+private final class ChunkWriter {
+    let context: CGContext
+    private let state: State
+    private var closed = false
+
+    private final class State {
+        let file: UnsafeMutablePointer<FILE>
+        var bytes = 0
+        init(file: UnsafeMutablePointer<FILE>) { self.file = file }
+    }
+
+    var bytesWritten: Int { state.bytes }
+
+    init?(url: URL) {
+        guard let file = fopen(url.path, "wb") else { return nil }
+        let state = State(file: file)
+        var callbacks = CGDataConsumerCallbacks(
+            putBytes: { info, buffer, count in
+                let state = Unmanaged<State>.fromOpaque(info!).takeUnretainedValue()
+                let written = fwrite(buffer, 1, count, state.file)
+                state.bytes += written
+                return written
+            },
+            releaseConsumer: { info in
+                let state = Unmanaged<State>.fromOpaque(info!).takeRetainedValue()
+                fclose(state.file)
+            }
+        )
+        guard let consumer = CGDataConsumer(info: Unmanaged.passRetained(state).toOpaque(), cbks: &callbacks),
+              let context = CGContext(consumer: consumer, mediaBox: nil, nil)
+        else {
+            fclose(file)
+            return nil
+        }
+        self.state = state
+        self.context = context
+    }
+
+    func close() {
+        guard !closed else { return }
+        closed = true
+        context.closePDF()
+        fflush(state.file)
     }
 }
 

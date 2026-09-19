@@ -335,18 +335,18 @@ final class PageGridViewController: NSViewController {
         guard total > 0 else { completion("nothing to scroll"); return }
         var y: CGFloat = 0
         var direction: CGFloat = 1
-        var peak = MemoryStats.footprintMB()
+        var peak = (Double(MemoryFootprint.bytes()) / 1_048_576)
         let start = Date()
         Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { timer in
             y += direction * 90
             if y >= total { y = total; direction = -1 }
             clip.scroll(to: NSPoint(x: 0, y: max(0, y)))
             self.scrollView.reflectScrolledClipView(clip)
-            peak = max(peak, MemoryStats.footprintMB())
+            peak = max(peak, (Double(MemoryFootprint.bytes()) / 1_048_576))
             if direction < 0 && y <= 0 {
                 timer.invalidate()
                 completion(String(format: "scrolled %d pages down and up in %.1fs, peak footprint %.0f MB, now %.0f MB",
-                                  self.workspace.pages.count, Date().timeIntervalSince(start), peak, MemoryStats.footprintMB()))
+                                  self.workspace.pages.count, Date().timeIntervalSince(start), peak, (Double(MemoryFootprint.bytes()) / 1_048_576)))
             }
         }
     }

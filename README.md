@@ -89,6 +89,7 @@ XCTest isn't usable with Command Line Tools alone, so the core logic is verified
 swift run -c release pdfolio-checks                       # all checks + 1000-page perf case
 swift run -c release pdfolio-checks --skip-perf           # logic only
 swift run -c release pdfolio-checks --perf-file big.pdf   # benchmark a real file
+swift run -c release pdfolio-checks --skip-perf --flatten-only --perf-file scans.pdf  # flattened export only, in a fresh process
 ```
 
 It covers page-list operations (move, remove, duplicate, rotate, file regrouping, insert), rotation geometry, and export in both modes. For export it renders the output and checks, by pixels, that each signature lands in the right place and orientation, including on pre-rotated pages and pages rotated after signing. It also checks text preservation, page sizes, source-file protection, cancellation and cleanup, image import, and signature cleanup.
@@ -106,7 +107,8 @@ Performance is an MVP requirement, and the design follows from it:
 - Thumbnails render lazily on a background queue, only for cells on screen. Requests for cells that scroll away are dropped before rendering.
 - Thumbnail sizes snap to a few buckets, and images live in an `NSCache` with a 48 MB budget. Rotation is a layer transform, so it never re-renders.
 - The signing view draws the page as vector content on demand. There is no full-page bitmap.
-- Export streams page by page. The flattened path writes through a `CGPDFContext` directly to disk.
+- Export streams page by page. The flattened path writes through a `CGPDFContext`, in chunks: the context holds data proportional to what it has written until it's closed, so large (scan-heavy) exports are written as several chunks and joined by copying pages. Normal documents fit in one chunk.
+- Thumbnails render on a few parallel workers, each with its own documents, and those documents are periodically released because PDFKit caches decoded page images in them.
 - Under memory pressure, all caches and parsed documents are dropped. They're recreated on demand.
 
 Measured on an Apple Silicon Mac (MacBook, 2560×1664 Retina) with generated pages that each contain a JPEG photo, vector art and a paragraph of text:
@@ -118,6 +120,7 @@ Measured on an Apple Silicon Mac (MacBook, 2560×1664 Retina) with generated pag
 | 1000 pages, scroll top → bottom → top | < 500–700 MB | **peak 185 MB** |
 | 3000 pages, same scroll | — | **peak 223 MB** |
 | Export 1000 pages (assembled / flattened) | responsive | **0.9 s / 0.9 s**, footprint < 50 MB |
+| Flattened export, 120 scanned pages (270 MB, A4 @300 dpi) | bounded | **288 MB** peak (was 759 MB, growing ~5.5 MB per page) |
 
 ## Project layout
 

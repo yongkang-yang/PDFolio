@@ -375,7 +375,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
                 switch result {
                 case .success:
                     NSLog("PDFolio: exported %d pages in %.2fs (flatten: %@), footprint %.0f MB",
-                          pages.count, Date().timeIntervalSince(started), options.flatten ? "yes" : "no", MemoryStats.footprintMB())
+                          pages.count, Date().timeIntervalSince(started), options.flatten ? "yes" : "no", (Double(MemoryFootprint.bytes()) / 1_048_576))
                     if isFull {
                         self.workspace.hasUnexportedChanges = false
                         self.updateTitle()
@@ -527,7 +527,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     func runScrollBenchmark(quitAfter: Bool) {
         // Let the window lay out and first thumbnails load.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            let before = MemoryStats.footprintMB()
+            let before = (Double(MemoryFootprint.bytes()) / 1_048_576)
             self.grid.runScrollBenchmark { report in
                 let message = String(format: "PDFolio benchmark: footprint before scroll %.0f MB; %@", before, report)
                 print(message)

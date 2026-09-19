@@ -242,7 +242,7 @@ let turnedURL = makePDF("turned.pdf", pages: 1, size: letter, label: "Turned", r
 let assets = AssetLibrary()
 let sigAsset = assets.add(makeSignaturePNG())
 
-func exportScenario(flatten: Bool) throws {
+func exportScenario(flatten: Bool, chunkBytes: Int? = nil) throws {
     let alpha = try SourceLoader.makeSource(url: alphaURL, colorIndex: 0)
     let beta = try SourceLoader.makeSource(url: betaURL, colorIndex: 1)
     let turned = try SourceLoader.makeSource(url: turnedURL, colorIndex: 2)
@@ -266,9 +266,11 @@ func exportScenario(flatten: Bool) throws {
     list.updateSignatures(pageID: p[1].id, [PlacedSignature(asset: sigAsset, rect: displayRect, rotation: 0)])
     list.rotate(ids: [p[1].id], by: 90)
 
-    let out = workDir.appendingPathComponent(flatten ? "flat.pdf" : "assembled.pdf")
+    let out = workDir.appendingPathComponent(flatten ? "flat\(chunkBytes ?? 0).pdf" : "assembled.pdf")
     var progressCalls = 0
-    try PDFExporter(sources: sources, assets: assets).export(list.pages, to: out, options: .init(flatten: flatten)) { _, _ in
+    let exporter = PDFExporter(sources: sources, assets: assets)
+    if let chunkBytes { exporter.flattenChunkBytes = chunkBytes }
+    try exporter.export(list.pages, to: out, options: .init(flatten: flatten)) { _, _ in
         progressCalls += 1
         return true
     }
@@ -312,6 +314,11 @@ func exportScenario(flatten: Bool) throws {
 
 section("Export (assembled, movable signatures)") { try exportScenario(flatten: false) }
 section("Export (flattened)") { try exportScenario(flatten: true) }
+section("Export (flattened, written in chunks)") {
+    try exportScenario(flatten: true, chunkBytes: 1)
+    let leftovers = try FileManager.default.contentsOfDirectory(atPath: workDir.path).filter { $0.contains(".chunk") }
+    check(leftovers.isEmpty, "chunk files cleaned up: \(leftovers)")
+}
 
 section("Export safety") {
     let alpha = try SourceLoader.makeSource(url: alphaURL, colorIndex: 0)
@@ -440,34 +447,38 @@ if let i = CommandLine.arguments.firstIndex(of: "--perf-file"), i + 1 < CommandL
         let source = try SourceLoader.makeSource(url: url, colorIndex: 0)
         var list = PageList()
         list.addSource(source)
+        // `--flatten-only` measures just the flattened export in a fresh process.
+        let flattenOnly = CommandLine.arguments.contains("--flatten-only")
         let renderer = ThumbnailRenderer(assets: assets)
         var t = Date()
         var window: [CGImage] = []
         var peak = baseline
-        for i in 0..<source.pageCount {
+        for i in 0..<(flattenOnly ? 0 : source.pageCount) {
             if let image = renderer.render(source: source, pageIndex: i, signatures: [], maxPixelSize: 384) {
                 window.append(image)
                 if window.count > 120 { window.removeFirst() }
             }
             if i % 50 == 0 { peak = max(peak, residentMB()) }
         }
-        print(String(format: "  %d thumbnails @384px: %.1f ms each, peak footprint %.0f MB (baseline %.0f MB)",
-                     source.pageCount, Date().timeIntervalSince(t) * 1000 / Double(source.pageCount), peak, baseline))
+        if !flattenOnly { print(String(format: "  %d thumbnails @384px: %.1f ms each, peak footprint %.0f MB (baseline %.0f MB)",
+                     source.pageCount, Date().timeIntervalSince(t) * 1000 / Double(source.pageCount), peak, baseline)) }
         window.removeAll()
         list.updateSignatures(pageID: list.pages[0].id, [PlacedSignature(asset: sigAsset, rect: CGRect(x: 0.5, y: 0.1, width: 0.3, height: 0.08), rotation: 0)])
         list.rotate(ids: Set(list.pages.prefix(10).map(\.id)), by: 90)
-        for flatten in [false, true] {
+        for flatten in flattenOnly ? [true] : [false, true] {
             let out = workDir.appendingPathComponent("perf-\(flatten).pdf")
             t = Date()
-            var exportPeak = residentMB()
+            let exportStart = residentMB()
+            var exportPeak = exportStart
             try PDFExporter(sources: [source.id: source], assets: assets).export(list.pages, to: out, options: .init(flatten: flatten)) { done, _ in
-                if done % 50 == 0 { exportPeak = max(exportPeak, residentMB()) }
+                exportPeak = max(exportPeak, residentMB())
                 return true
             }
+            exportPeak = max(exportPeak, residentMB())
             let bytes = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
             let inBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-            print(String(format: "  export %@: %.2fs, peak footprint %.0f MB, %.1f MB → %.1f MB",
-                         flatten ? "flattened" : "assembled", Date().timeIntervalSince(t), exportPeak,
+            print(String(format: "  export %@: %.2fs, peak footprint %.0f MB (+%.0f MB during export), %.1f MB → %.1f MB",
+                         flatten ? "flattened" : "assembled", Date().timeIntervalSince(t), exportPeak, exportPeak - exportStart,
                          Double(inBytes) / 1_048_576, Double(bytes) / 1_048_576))
             check(PDFDocument(url: out)?.pageCount == source.pageCount, "exported every page")
         }
