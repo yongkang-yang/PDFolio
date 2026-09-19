@@ -8,7 +8,7 @@ A lightweight, native macOS PDF app for the everyday parts of Acrobat: **organiz
 
 **Import PDFs → Organize Pages → Merge → Read → Add Signature → Export PDF**
 
-Your source files are never modified. Everything happens on a page list that points into them, and the result is written only when you export.
+Your source files stay unchanged: all edits apply to a page list that points into them, and the result is written when you export.
 
 ## Performance
 
