@@ -122,3 +122,7 @@ Text/content editing, OCR, a full annotation suite, forms, cloud sync, AI featur
 
 - Bookmarks/outlines from source PDFs are not carried into the exported file
 - Flattening makes links and form fields non-interactive (that's what flattening means). The default export keeps them.
+
+## License
+
+PDFolio is licensed under the [GNU General Public License v3.0](LICENSE).
