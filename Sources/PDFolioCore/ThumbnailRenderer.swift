@@ -6,35 +6,40 @@ import PDFKit
 /// orientation; workspace rotation is applied by the view at display time, so
 /// rotating a page never needs a re-render.
 ///
-/// Not thread-safe: create one per serial render queue and only use it there.
-/// It keeps its own `PDFDocument` per source, separate from the UI's.
+/// Not thread-safe: use each renderer from one thread at a time. It keeps
+/// its own `PDFDocument` per source, separate from the UI's, so several
+/// renderers can work in parallel.
 public final class ThumbnailRenderer {
-    private var sources: [SourceID: SourceInfo] = [:]
     private var documents: [SourceID: PDFDocument] = [:]
     private let assets: AssetLibrary
+    /// PDFKit keeps each drawn page's decoded images cached in its document
+    /// (tens of MB per scanned page), so documents are reopened after this
+    /// many renders. Opening is cheap; parsing is lazy.
+    private static let rendersPerDocumentLifetime = 8
+    private var rendersSinceOpen = 0
 
     public init(assets: AssetLibrary) {
         self.assets = assets
-    }
-
-    public func register(_ source: SourceInfo) {
-        sources[source.id] = source
     }
 
     /// Drops parsed documents; they reopen lazily on the next render. Call
     /// under memory pressure.
     public func purge() {
         documents.removeAll()
+        rendersSinceOpen = 0
     }
 
     /// Renders a page so its longest displayed side is `maxPixelSize` pixels.
-    public func render(source: SourceID, pageIndex: Int, signatures: [PlacedSignature], maxPixelSize: CGFloat) -> CGImage? {
-        autoreleasepool {
-            guard let info = sources[source] else { return nil }
-            if documents[source] == nil {
-                documents[source] = SourceLoader.openDocument(info)
+    public func render(source info: SourceInfo, pageIndex: Int, signatures: [PlacedSignature], maxPixelSize: CGFloat) -> CGImage? {
+        defer {
+            rendersSinceOpen += 1
+            if rendersSinceOpen >= Self.rendersPerDocumentLifetime { purge() }
+        }
+        return autoreleasepool {
+            if documents[info.id] == nil {
+                documents[info.id] = SourceLoader.openDocument(info)
             }
-            guard let page = documents[source]?.page(at: pageIndex) else { return nil }
+            guard let page = documents[info.id]?.page(at: pageIndex) else { return nil }
 
             let box = page.bounds(for: .cropBox)
             let display = PageGeometry.displaySize(box: box.size, rotation: page.rotation)

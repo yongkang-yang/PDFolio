@@ -383,10 +383,9 @@ if !CommandLine.arguments.contains("--skip-perf") {
         check(importTime < 2, "import 1000 pages under 2s")
 
         let renderer = ThumbnailRenderer(assets: assets)
-        renderer.register(big)
         t = Date()
         for i in 0..<60 {
-            _ = renderer.render(source: big.id, pageIndex: i, signatures: [], maxPixelSize: 360)
+            _ = renderer.render(source: big, pageIndex: i, signatures: [], maxPixelSize: 360)
         }
         let perThumb = Date().timeIntervalSince(t) / 60
         print(String(format: "  thumbnail @360px: %.1f ms each", perThumb * 1000))
@@ -398,7 +397,7 @@ if !CommandLine.arguments.contains("--skip-perf") {
         var peak = residentMB()
         t = Date()
         for i in 0..<1000 {
-            if let image = renderer.render(source: big.id, pageIndex: i, signatures: [], maxPixelSize: 360) {
+            if let image = renderer.render(source: big, pageIndex: i, signatures: [], maxPixelSize: 360) {
                 window.append(image)
                 if window.count > 120 { window.removeFirst() }
             }
@@ -442,12 +441,11 @@ if let i = CommandLine.arguments.firstIndex(of: "--perf-file"), i + 1 < CommandL
         var list = PageList()
         list.addSource(source)
         let renderer = ThumbnailRenderer(assets: assets)
-        renderer.register(source)
         var t = Date()
         var window: [CGImage] = []
         var peak = baseline
         for i in 0..<source.pageCount {
-            if let image = renderer.render(source: source.id, pageIndex: i, signatures: [], maxPixelSize: 384) {
+            if let image = renderer.render(source: source, pageIndex: i, signatures: [], maxPixelSize: 384) {
                 window.append(image)
                 if window.count > 120 { window.removeFirst() }
             }

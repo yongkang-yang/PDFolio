@@ -61,8 +61,6 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         sidebar.delegate = self
         zoomSlider.target = self
         zoomSlider.action = #selector(zoomSliderChanged(_:))
-        zoomSlider.numberOfTickMarks = PageGridViewController.maxColumns
-        zoomSlider.allowsTickMarkValuesOnly = true
         syncZoomSlider()
 
         workspace.observe { [weak self] change in
@@ -294,7 +292,13 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     }
 
     private func syncZoomSlider() {
-        zoomSlider.doubleValue = Double(PageGridViewController.maxColumns + 1 - grid.columns)
+        // A plain continuous slider that snaps to whole pages per row. Leave
+        // it alone while it already points at the current value, so it
+        // doesn't jump under the pointer during a drag.
+        let target = PageGridViewController.maxColumns + 1 - grid.columns
+        if Int(zoomSlider.doubleValue.rounded()) != target {
+            zoomSlider.doubleValue = Double(target)
+        }
         zoomSlider.toolTip = grid.columns == 1 ? "1 page per row" : "\(grid.columns) pages per row"
     }
 
