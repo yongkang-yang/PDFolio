@@ -23,7 +23,15 @@ Your source files are never modified. Everything happens on a page list that poi
 - Unlimited undo / redo for every page operation
 - Password-protected PDFs prompt for their password
 
+### Reading
+- Double-click a page (or press Return) to read: pages are shown full size in a continuous scroll, exactly as they will export, with rotations and signatures applied
+- Turn pages with ← / →, Page Up / Page Down, Home / End, the buttons at the bottom, or a two-finger swipe left/right
+- Text can be selected and copied, and links work
+- The page on screen counts as the selection, so the toolbar's **Sign**, **Rotate** and **Delete** apply to it
+- Press Esc or click **Pages** to go back to the grid, with the page you were reading selected
+
 ### Signatures
+- Select a page and click **Sign** in the toolbar (⇧⌘S), in the grid or while reading
 - Draw a signature with the mouse, or use **trackpad mode**: the trackpad surface maps onto the canvas and you sign with one finger, no clicking (like Preview). Press any key when done.
 - Import a signature image. Transparent PNGs are used as-is. Photos or scans of ink on paper get the white background removed and margins trimmed automatically.
 - Saved signatures live in `~/Library/Application Support/PDFolio/Signatures` and never leave the Mac
@@ -42,7 +50,11 @@ Your source files are never modified. Everything happens on a page list that poi
 |---|---|
 | Two-finger scroll | Scroll the page grid or the page being signed |
 | Pinch | Resize thumbnails; zoom the page in the signing view |
-| Double-click or Return | Open the page for signing |
+| Double-click or Return | Read from this page |
+| ← → / Page Up, Page Down / Home, End | Turn pages while reading |
+| Two-finger swipe left / right | Turn pages while reading |
+| Esc | Back from reading to the page grid |
+| ⇧⌘S | Sign the selected page, or the page being read |
 | ⌘L / ⌘R | Rotate left / right |
 | ⌘D | Duplicate |
 | ⌫ | Delete selected pages (or the selected signature in the signing view) |

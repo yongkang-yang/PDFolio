@@ -385,7 +385,7 @@ final class EmptyStateView: NSStackView {
         let title = NSTextField(labelWithString: "Drop PDFs or images here")
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = .secondaryLabelColor
-        let subtitle = NSTextField(wrappingLabelWithString: "Reorder pages by dragging. Pinch to resize thumbnails, double-click a page to sign it.")
+        let subtitle = NSTextField(wrappingLabelWithString: "Reorder pages by dragging. Pinch to resize thumbnails, double-click a page to read.")
         subtitle.alignment = .center
         subtitle.textColor = .tertiaryLabelColor
         subtitle.font = .systemFont(ofSize: 12)

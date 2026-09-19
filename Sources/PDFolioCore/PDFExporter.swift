@@ -93,6 +93,15 @@ public final class PDFExporter {
     /// so content, fonts, links and existing annotations are preserved as-is.
     /// Signatures become stamp annotations with an embedded appearance.
     private func writeAssembled(_ pages: [PageRef], to url: URL, progress: ((Int, Int) -> Bool)?) throws {
+        let output = try assembleDocument(pages, progress: progress)
+        guard output.write(to: url) else { throw ExportError.writeFailed(url) }
+    }
+
+    /// Builds the page sequence as one in-memory document, exactly as the
+    /// default export writes it. Pages reference the source documents' content
+    /// rather than copying or rendering it, so this is cheap even for large
+    /// workspaces; the reading view displays it directly.
+    public func assembleDocument(_ pages: [PageRef], progress: ((Int, Int) -> Bool)? = nil) throws -> PDFDocument {
         let output = PDFDocument()
         for (i, ref) in pages.enumerated() {
             try autoreleasepool {
@@ -109,7 +118,7 @@ public final class PDFExporter {
             }
             if let progress, !progress(i + 1, pages.count) { throw ExportError.cancelled }
         }
-        guard output.write(to: url) else { throw ExportError.writeFailed(url) }
+        return output
     }
 
     /// Flattened path: redraws each page into a streaming PDF context. Page

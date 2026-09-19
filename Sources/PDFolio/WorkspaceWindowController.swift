@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation {
     let workspace = Workspace()
     private let grid: PageGridViewController
+    private let reader: ReaderViewController
+    private let content = ContentController()
     private let sidebar: SourceListViewController
     private let split = NSSplitViewController()
     private let zoomSlider = NSSlider(value: 170, minValue: Double(PageGridViewController.minZoom),
@@ -15,6 +17,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
 
     init() {
         grid = PageGridViewController(workspace: workspace)
+        reader = ReaderViewController(workspace: workspace)
         sidebar = SourceListViewController(workspace: workspace)
 
         let window = NSWindow(
@@ -33,7 +36,8 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         sidebarItem.minimumThickness = 190
         sidebarItem.maximumThickness = 320
         sidebarItem.canCollapse = true
-        let contentItem = NSSplitViewItem(viewController: grid)
+        content.show(grid)
+        let contentItem = NSSplitViewItem(viewController: content)
         split.addSplitViewItem(sidebarItem)
         split.addSplitViewItem(contentItem)
         window.contentViewController = split
@@ -51,6 +55,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         window.toolbar = toolbar
 
         grid.delegate = self
+        reader.delegate = self
         sidebar.delegate = self
         zoomSlider.target = self
         zoomSlider.action = #selector(zoomSliderChanged(_:))
@@ -61,6 +66,13 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
             switch change {
             case .pages:
                 self.grid.reload()
+                if self.isReading {
+                    if self.workspace.pages.isEmpty {
+                        self.exitReader()
+                    } else {
+                        self.reader.show(pageID: self.reader.currentPageID)
+                    }
+                }
                 self.sidebar.reload()
                 self.updateTitle()
             case .sources:
@@ -225,6 +237,31 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         split.presentAsSheet(controller)
     }
 
+    // MARK: Reading mode
+
+    private var isReading: Bool { content.current === reader }
+
+    /// Switches the content area to the reader, opened at `pageID`.
+    func openReader(pageID: UUID) {
+        if !isReading {
+            content.show(reader)
+        }
+        reader.show(pageID: pageID)
+        reader.focus()
+    }
+
+    /// Back to the grid, with the page that was being read selected.
+    func exitReader() {
+        guard isReading else { return }
+        let current = reader.currentPageID
+        content.show(grid)
+        reader.close()
+        if let current {
+            grid.select([current])
+        }
+        window?.makeFirstResponder(grid.collectionView)
+    }
+
     // MARK: Zoom
 
     @objc func zoomIn(_ sender: Any?) { grid.zoom(by: 1.2) }
@@ -332,8 +369,10 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
             return hasSelection
         case #selector(signPage(_:)):
             return grid.selectedIDs.count == 1
-        case #selector(exportPDF(_:)), #selector(selectAll(_:)):
+        case #selector(exportPDF(_:)):
             return !workspace.pages.isEmpty
+        case #selector(selectAll(_:)), #selector(zoomIn(_:)), #selector(zoomOut(_:)):
+            return !isReading && !workspace.pages.isEmpty
         default:
             return true
         }
@@ -392,7 +431,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         case Item.delete: return button("Delete", "trash", #selector(delete(_:)), "Delete selected pages (⌫)")
         case Item.insert: return button("Insert", "doc.badge.plus", #selector(insertFiles(_:)), "Insert a PDF or image after the selection (⇧⌘I)")
         case Item.extract: return button("Extract", "square.and.arrow.up.on.square", #selector(extractPages(_:)), "Save selected pages as a new PDF (⇧⌘E)")
-        case Item.sign: return button("Sign", "signature", #selector(signPage(_:)), "Add a signature to the selected page (⇧⌘S)")
+        case Item.sign: return button("Sign", "signature", #selector(signPage(_:)), "Add a signature to the selected page, or the page being read (⇧⌘S)")
         case Item.zoom:
             let item = NSToolbarItem(itemIdentifier: id)
             item.label = "Thumbnail Size"
@@ -440,8 +479,12 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
                             DebugSnapshot.write(sheet, to: directory.appendingPathComponent("pad.png"))
                         }
                         pad.dismiss(nil)
-                        self.workspace.hasUnexportedChanges = false
-                        NSApp.terminate(nil)
+                        self.openReader(pageID: self.workspace.pages[0].id)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            self.reader.debugSnapshot(to: directory.appendingPathComponent("reader.png"))
+                            self.workspace.hasUnexportedChanges = false
+                            NSApp.terminate(nil)
+                        }
                     }
                 }
             }
@@ -467,7 +510,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
 
 extension WorkspaceWindowController: PageGridDelegate, SourceListDelegate {
     func pageGrid(_ grid: PageGridViewController, openPage id: UUID) {
-        openSigning(pageID: id)
+        openReader(pageID: id)
     }
 
     func pageGrid(_ grid: PageGridViewController, importFiles urls: [URL], atGap gap: Int?) {
@@ -484,7 +527,13 @@ extension WorkspaceWindowController: PageGridDelegate, SourceListDelegate {
     }
 
     func sourceList(_ list: SourceListViewController, didSelect source: SourceID) {
-        grid.select(Set(workspace.pages.filter { $0.source == source }.map(\.id)))
+        let ids = workspace.pages.filter { $0.source == source }.map(\.id)
+        if isReading {
+            // Jump to the file's first page instead of leaving reading mode.
+            if let first = ids.first { openReader(pageID: first) }
+            return
+        }
+        grid.select(Set(ids))
         window?.makeFirstResponder(grid.collectionView)
     }
 
@@ -533,5 +582,37 @@ final class ExportProgressController: NSViewController {
 
     @objc private func cancel() {
         lock.lock(); cancelled = true; lock.unlock()
+    }
+}
+
+extension WorkspaceWindowController: ReaderDelegate {
+    func reader(_ reader: ReaderViewController, didShowPage id: UUID) {
+        // The page being read acts as the selection, so Sign, Rotate and
+        // Delete in the toolbar apply to it.
+        grid.select([id], scroll: false)
+    }
+
+    func readerDidRequestExit(_ reader: ReaderViewController) {
+        exitReader()
+    }
+}
+
+/// Hosts either the page grid or the reader in the window's content area.
+final class ContentController: NSViewController {
+    private(set) var current: NSViewController?
+
+    override func loadView() {
+        view = NSView()
+    }
+
+    func show(_ controller: NSViewController) {
+        guard controller !== current else { return }
+        current?.view.removeFromSuperview()
+        current?.removeFromParent()
+        addChild(controller)
+        controller.view.frame = view.bounds
+        controller.view.autoresizingMask = [.width, .height]
+        view.addSubview(controller.view)
+        current = controller
     }
 }
