@@ -1,9 +1,27 @@
 import AppKit
 import PDFolioCore
 
+enum SourceAction {
+    case remove, read, showInFinder, export, moveToTop, moveToBottom, restoreDeletedPages
+}
+
 protocol SourceListDelegate: AnyObject {
     func sourceList(_ list: SourceListViewController, didSelect source: SourceID)
     func sourceList(_ list: SourceListViewController, importFiles urls: [URL])
+    func sourceList(_ list: SourceListViewController, perform action: SourceAction, on source: SourceID)
+}
+
+/// Table that removes the selected file on ⌫.
+final class SourceTableView: NSTableView {
+    var onDelete: ((Int) -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if (event.keyCode == 51 || event.keyCode == 117), selectedRow >= 0 {
+            onDelete?(selectedRow)
+        } else {
+            super.keyDown(with: event)
+        }
+    }
 }
 
 /// Sidebar listing imported files. Dragging a file reorders at file level:
@@ -13,7 +31,7 @@ final class SourceListViewController: NSViewController {
 
     let workspace: Workspace
     weak var delegate: SourceListDelegate?
-    private let tableView = NSTableView()
+    private let tableView = SourceTableView()
     private var rows: [SourceInfo] = []
     private var pagesInUse: [SourceID: Int] = [:]
 
@@ -36,6 +54,10 @@ final class SourceListViewController: NSViewController {
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         tableView.target = self
         tableView.action = #selector(rowClicked)
+        tableView.onDelete = { [weak self] row in self?.perform(.remove, row: row) }
+        let menu = NSMenu()
+        menu.delegate = self
+        tableView.menu = menu
 
         let scroll = NSScrollView()
         scroll.documentView = tableView
@@ -46,7 +68,7 @@ final class SourceListViewController: NSViewController {
         header.font = .systemFont(ofSize: 11, weight: .semibold)
         header.textColor = .secondaryLabelColor
 
-        let hint = NSTextField(wrappingLabelWithString: "Drag files to reorder them as whole blocks. Click a file to select its pages.")
+        let hint = NSTextField(wrappingLabelWithString: "Drag files to reorder them as whole blocks. Click a file to select its pages; right-click for more.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .tertiaryLabelColor
 
@@ -73,6 +95,25 @@ final class SourceListViewController: NSViewController {
         rows = workspace.orderedSources
         pagesInUse = workspace.pages.reduce(into: [:]) { $0[$1.source, default: 0] += 1 }
         tableView.reloadData()
+    }
+
+    /// The selected file when the sidebar has keyboard focus, so ⌫ (routed
+    /// through the Edit menu) removes the file rather than its pages.
+    var focusedSource: SourceID? {
+        guard view.window?.firstResponder === tableView,
+              tableView.selectedRow >= 0, tableView.selectedRow < rows.count
+        else { return nil }
+        return rows[tableView.selectedRow].id
+    }
+
+    private func perform(_ action: SourceAction, row: Int) {
+        guard row >= 0, row < rows.count else { return }
+        delegate?.sourceList(self, perform: action, on: rows[row].id)
+    }
+
+    @objc private func menuAction(_ sender: NSMenuItem) {
+        guard let action = sender.representedObject as? SourceAction else { return }
+        perform(action, row: sender.tag)
     }
 
     @objc private func rowClicked() {
@@ -168,5 +209,41 @@ final class SourceCell: NSTableCellView {
         toolTip = source.displayName
         let total = source.pageCount == 1 ? "1 page" : "\(source.pageCount) pages"
         detail.stringValue = inUse == source.pageCount ? total : "\(inUse) of \(total) in use"
+    }
+}
+
+extension SourceListViewController: NSMenuDelegate {
+    /// Builds the right-click menu for the clicked file.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let row = tableView.clickedRow
+        guard row >= 0, row < rows.count else { return }
+        let source = rows[row]
+        let inUse = pagesInUse[source.id] ?? 0
+        let missing = source.pageCount - inUse
+
+        func add(_ title: String, _ symbol: String, _ action: SourceAction, enabled: Bool = true) {
+            let item = NSMenuItem(title: title, action: enabled ? #selector(menuAction(_:)) : nil, keyEquivalent: "")
+            item.target = self
+            item.tag = row
+            item.representedObject = action
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            menu.addItem(item)
+        }
+
+        add("Read This File", "book", .read, enabled: inUse > 0)
+        add("Show in Finder", "folder", .showInFinder,
+            enabled: source.fileURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false)
+        add("Export Only This File…", "square.and.arrow.up", .export, enabled: inUse > 0)
+        menu.addItem(.separator())
+        add("Move to Top", "arrow.up.to.line", .moveToTop, enabled: row > 0)
+        add("Move to Bottom", "arrow.down.to.line", .moveToBottom, enabled: row < rows.count - 1)
+        if missing > 0 {
+            add(missing == 1 ? "Restore 1 Deleted Page" : "Restore \(missing) Deleted Pages", "arrow.uturn.backward", .restoreDeletedPages)
+        }
+        menu.addItem(.separator())
+        add("Remove from Workspace", "minus.circle", .remove)
+        menu.items.last?.keyEquivalent = "\u{8}"
+        menu.items.last?.keyEquivalentModifierMask = []
     }
 }

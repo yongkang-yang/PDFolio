@@ -176,6 +176,39 @@ section("PageList file-level ordering") {
     check(inserted.pages.map(\.source) == [a.id, b.id, b.id, b.id, a.id], "insert file between pages")
 }
 
+section("PageList remove / reorder / restore files") {
+    let a = SourceInfo(displayName: "a", origin: .data(Data()), pageCount: 4, colorIndex: 0)
+    let b = SourceInfo(displayName: "b", origin: .data(Data()), pageCount: 2, colorIndex: 1)
+    var list = PageList()
+    list.addSource(a)
+    list.addSource(b)
+    list.duplicate(ids: [list.pages[4].id])
+    list.removeSource(b.id)
+    check(list.pages.allSatisfy { $0.source == a.id } && list.pages.count == 4, "remove file drops all its pages, duplicates too")
+    check(list.sourceOrder == [a.id], "remove file drops it from file order")
+
+    list = PageList()
+    list.addSource(a)
+    list.addSource(b)
+    list.moveSource(b.id, toFront: true)
+    check(list.sourceOrder == [b.id, a.id] && list.pages.first?.source == b.id, "move file to front")
+    list.moveSource(b.id, toFront: false)
+    check(list.sourceOrder == [a.id, b.id] && list.pages.last?.source == b.id, "move file to back")
+
+    list = PageList()
+    list.addSource(a)
+    list.addSource(b)
+    // Delete a's pages 0 and 2, move a's page 3 to the very end.
+    let ids = list.pages.map(\.id)
+    list.remove(ids: [ids[0], ids[2]])
+    list.move(ids: [ids[3]], toGap: list.pages.count)
+    check(list.missingPageIndices(of: a) == [0, 2], "missing pages detected")
+    let restored = list.restoreMissingPages(of: a)
+    check(restored.count == 2 && list.missingPageIndices(of: a).isEmpty, "restore brings every page back")
+    let order = list.pages.map { "\($0.source == a.id ? "a" : "b")\($0.pageIndex)" }
+    check(order == ["a0", "a1", "a2", "b0", "b1", "a3"], "restored pages return next to their neighbors: \(order)")
+}
+
 // MARK: - Geometry
 
 section("PageGeometry") {

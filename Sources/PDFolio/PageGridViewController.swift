@@ -34,6 +34,41 @@ final class PageCollectionView: NSCollectionView {
         }
     }
 
+    // Right-click: act on the clicked page, or on the whole selection if the
+    // clicked page is part of it (as in Finder).
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let grid else { return nil }
+        let point = convert(event.locationInWindow, from: nil)
+        guard let indexPath = indexPathForItem(at: point) else { return nil }
+        // Take focus so Delete acts on pages, not on a file selected in the sidebar.
+        window?.makeFirstResponder(self)
+        let id = grid.workspace.pages[indexPath.item].id
+        if !grid.selectedIDs.contains(id) {
+            grid.select([id], scroll: false)
+        }
+        let count = grid.selectedIDs.count
+        let menu = NSMenu()
+        func add(_ title: String, _ symbol: String, _ action: Selector) {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            menu.addItem(item)  // nil target: handled by the window controller
+        }
+        add("Read", "book", #selector(WorkspaceWindowController.readSelected(_:)))
+        if count == 1 {
+            add("Sign…", "signature", #selector(WorkspaceWindowController.signPage(_:)))
+        }
+        menu.addItem(.separator())
+        add("Rotate Left", "rotate.left", #selector(WorkspaceWindowController.rotateLeft(_:)))
+        add("Rotate Right", "rotate.right", #selector(WorkspaceWindowController.rotateRight(_:)))
+        add(count == 1 ? "Duplicate Page" : "Duplicate \(count) Pages", "plus.square.on.square", #selector(WorkspaceWindowController.duplicatePages(_:)))
+        menu.addItem(.separator())
+        add(count == 1 ? "Extract Page…" : "Extract \(count) Pages…", "square.and.arrow.up.on.square", #selector(WorkspaceWindowController.extractPages(_:)))
+        add("Insert Files After…", "doc.badge.plus", #selector(WorkspaceWindowController.insertFiles(_:)))
+        menu.addItem(.separator())
+        add(count == 1 ? "Delete Page" : "Delete \(count) Pages", "trash", #selector(WorkspaceWindowController.delete(_:)))
+        return menu
+    }
+
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
         case 51, 117: // delete, forward delete

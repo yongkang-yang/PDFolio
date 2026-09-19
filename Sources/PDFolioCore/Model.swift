@@ -18,6 +18,9 @@ public struct SourceInfo: Identifiable, Equatable {
     public let id: SourceID
     public var displayName: String
     public var origin: SourceOrigin
+    /// The file this source was imported from, also for images (whose
+    /// pages are converted to in-memory PDF data).
+    public var fileURL: URL?
     public var pageCount: Int
     public var password: String?
     /// Index into the UI's tag palette so pages from the same file are
@@ -28,6 +31,7 @@ public struct SourceInfo: Identifiable, Equatable {
         id: SourceID = UUID(),
         displayName: String,
         origin: SourceOrigin,
+        fileURL: URL? = nil,
         pageCount: Int,
         password: String? = nil,
         colorIndex: Int
@@ -35,6 +39,7 @@ public struct SourceInfo: Identifiable, Equatable {
         self.id = id
         self.displayName = displayName
         self.origin = origin
+        self.fileURL = fileURL ?? { if case .file(let url) = origin { return url } else { return nil } }()
         self.pageCount = pageCount
         self.password = password
         self.colorIndex = colorIndex

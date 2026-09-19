@@ -17,6 +17,8 @@ Your source files are never modified. Everything happens on a page list that poi
 - All pages appear in one thumbnail grid. Each page is tagged with its file's color, so pages stay identifiable after mixing
 - Multi-select (click, ⇧/⌘-click, rubber band), then drag to reorder, including across files
 - **File-level ordering**: drag files in the sidebar to regroup their pages as whole blocks; click a file to select its pages
+- Right-click a file in the sidebar to **remove it from the workspace** (or select it and press ⌫), read it, show it in Finder, export only that file, move it to the top or bottom, or restore pages you deleted from it. Removing is undoable and never touches the file on disk.
+- Right-click a page (or a selection) to read, sign, rotate, duplicate, extract, insert files after it, or delete
 - Rotate, delete, duplicate
 - Insert a PDF or image after the selection (⇧⌘I)
 - Extract the selected pages into a new PDF (⇧⌘E)

@@ -43,6 +43,7 @@ public enum SourceLoader {
             return SourceInfo(
                 displayName: url.lastPathComponent,
                 origin: .data(data),
+                fileURL: url,
                 pageCount: 1,
                 colorIndex: colorIndex
             )

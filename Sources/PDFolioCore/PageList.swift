@@ -83,6 +83,52 @@ public struct PageList: Equatable {
         pages = order.flatMap { buckets[$0] ?? [] }
     }
 
+    /// Removes a file from the workspace: all of its pages (including
+    /// duplicates) and its entry in the file order.
+    public mutating func removeSource(_ id: SourceID) {
+        pages.removeAll { $0.source == id }
+        sourceOrder.removeAll { $0 == id }
+    }
+
+    /// Moves a file to the front or back of the file order, regrouping pages
+    /// the same way dragging it in the sidebar does.
+    public mutating func moveSource(_ id: SourceID, toFront: Bool) {
+        guard sourceOrder.contains(id) else { return }
+        let others = sourceOrder.filter { $0 != id }
+        reorderSources(toFront ? [id] + others : others + [id])
+    }
+
+    /// Page indices of a file that no longer appear in the workspace.
+    public func missingPageIndices(of source: SourceInfo) -> [Int] {
+        let present = Set(pages.filter { $0.source == source.id }.map(\.pageIndex))
+        return (0..<source.pageCount).filter { !present.contains($0) }
+    }
+
+    /// Puts a file's deleted pages back, each right after the closest earlier
+    /// page of the same file that is still present (or before the closest
+    /// later one), so they return to their original place in the file's
+    /// run of pages. Returns the restored pages' ids.
+    @discardableResult
+    public mutating func restoreMissingPages(of source: SourceInfo) -> [UUID] {
+        var restored: [UUID] = []
+        for index in missingPageIndices(of: source) {
+            let page = PageRef(source: source.id, pageIndex: index)
+            let sameFile = pages.indices.filter { pages[$0].source == source.id }
+            if let before = sameFile.last(where: { pages[$0].pageIndex < index }) {
+                pages.insert(page, at: before + 1)
+            } else if let after = sameFile.first(where: { pages[$0].pageIndex > index }) {
+                pages.insert(page, at: after)
+            } else {
+                pages.append(page)
+            }
+            restored.append(page.id)
+        }
+        if !restored.isEmpty, !sourceOrder.contains(source.id) {
+            sourceOrder.append(source.id)
+        }
+        return restored
+    }
+
     public mutating func updateSignatures(pageID: UUID, _ signatures: [PlacedSignature]) {
         guard let i = pages.firstIndex(where: { $0.id == pageID }) else { return }
         pages[i].signatures = signatures

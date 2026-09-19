@@ -206,7 +206,25 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
 
     @objc func rotateLeft(_ sender: Any?) { grid.rotateSelection(by: -90) }
     @objc func rotateRight(_ sender: Any?) { grid.rotateSelection(by: 90) }
-    @objc func delete(_ sender: Any?) { grid.deleteSelection() }
+    @objc func delete(_ sender: Any?) {
+        if let source = sidebar.focusedSource {
+            removeSource(source)
+        } else {
+            grid.deleteSelection()
+        }
+    }
+
+    @objc func readSelected(_ sender: Any?) {
+        guard let index = grid.selectedIndices.first else { return }
+        openReader(pageID: workspace.pages[index].id)
+    }
+
+    /// Removes a file and all of its pages from the workspace (undoable; the
+    /// file on disk is untouched).
+    private func removeSource(_ id: SourceID) {
+        guard let source = workspace.sources[id] else { return }
+        workspace.apply("Remove \u{201C}\(source.displayName)\u{201D}") { $0.removeSource(id) }
+    }
 
     @objc func duplicatePages(_ sender: Any?) {
         let ids = grid.selectedIDs
@@ -283,7 +301,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
 
     /// Exports `pages` (or the whole workspace) through a save panel with a
     /// flatten option, running the write in the background with progress.
-    private func export(pages subset: [PageRef]?, closeAfter: Bool) {
+    private func export(pages subset: [PageRef]?, closeAfter: Bool, suggestedName: String? = nil) {
         guard let window else { return }
         let pages = subset ?? workspace.pages
         guard !pages.isEmpty else { NSSound.beep(); return }
@@ -291,7 +309,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
         panel.canCreateDirectories = true
-        panel.nameFieldStringValue = defaultExportName(extracting: subset != nil)
+        panel.nameFieldStringValue = suggestedName ?? defaultExportName(extracting: subset != nil)
         let flatten = NSButton(checkboxWithTitle: "Flatten signatures so they can’t be moved or removed", target: nil, action: nil)
         flatten.state = UserDefaults.standard.bool(forKey: "flattenOnExport") ? .on : .off
         let note = NSTextField(wrappingLabelWithString: "Page content stays vector. Flattening also makes links and form fields static.")
@@ -364,7 +382,9 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     private func isEnabled(_ action: Selector?) -> Bool {
         let hasSelection = !grid.selectedIDs.isEmpty
         switch action {
-        case #selector(rotateLeft(_:)), #selector(rotateRight(_:)), #selector(delete(_:)),
+        case #selector(delete(_:)):
+            return hasSelection || sidebar.focusedSource != nil
+        case #selector(rotateLeft(_:)), #selector(rotateRight(_:)), #selector(readSelected(_:)),
              #selector(duplicatePages(_:)), #selector(extractPages(_:)):
             return hasSelection
         case #selector(signPage(_:)):
@@ -539,6 +559,30 @@ extension WorkspaceWindowController: PageGridDelegate, SourceListDelegate {
 
     func sourceList(_ list: SourceListViewController, importFiles urls: [URL]) {
         importFiles(urls, atGap: nil)
+    }
+
+    func sourceList(_ list: SourceListViewController, perform action: SourceAction, on id: SourceID) {
+        guard let source = workspace.sources[id] else { return }
+        let pages = workspace.pages.filter { $0.source == id }
+        switch action {
+        case .remove:
+            removeSource(id)
+        case .read:
+            if let first = pages.first { openReader(pageID: first.id) }
+        case .showInFinder:
+            if let url = source.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        case .export:
+            let name = (source.displayName as NSString).deletingPathExtension
+            export(pages: pages, closeAfter: false, suggestedName: "\(name) (edited).pdf")
+        case .moveToTop, .moveToBottom:
+            workspace.apply("Move \u{201C}\(source.displayName)\u{201D}") {
+                $0.moveSource(id, toFront: action == .moveToTop)
+            }
+        case .restoreDeletedPages:
+            var restored: [UUID] = []
+            workspace.apply("Restore Deleted Pages") { restored = $0.restoreMissingPages(of: source) }
+            if !isReading { grid.select(Set(restored)) }
+        }
     }
 }
 
