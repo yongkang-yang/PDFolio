@@ -12,7 +12,7 @@ Your source files are never modified. Everything happens on a page list that poi
 
 ## Performance
 
-Memory and responsiveness were treated as requirements from the start, not a later optimization.
+PDFolio is designed to stay light on memory and responsive, including with thousands of pages and large scanned files.
 
 Measured on an Apple Silicon MacBook (2560×1664 Retina, 4 performance cores). "Generated" pages each contain a JPEG photo, vector art and a paragraph of text. "Scanned" pages are unique A4 images at 300 dpi.
 
@@ -30,10 +30,10 @@ Measured on an Apple Silicon MacBook (2560×1664 Retina, 4 performance cores). "
 
 How it stays light:
 
-- The workspace stores **page references** (source, page index, rotation, signatures), never page images
-- **Thumbnails** render lazily, only for cells on screen, on a few parallel workers (one per performance core, up to 4). Each worker has its own documents. Requests for cells that scroll away are dropped before rendering. Sizes snap to a few buckets, images live in an `NSCache` with a 48 MB budget, and rotation is a layer transform, so it never re-renders.
+- The workspace stores **page references** (source, page index, rotation, signatures); page content stays in the source files
+- **Thumbnails** render lazily, only for cells on screen, on a few parallel workers (one per performance core, up to 4). Each worker has its own documents. Requests for cells that scroll away are dropped before rendering. Sizes snap to a few buckets, images live in an `NSCache` with a 48 MB budget, and rotation is a layer transform, so a rotated page reuses its existing thumbnail.
 - **Reading mode** is a lightweight custom view that draws pages as vector content, only for the area on screen, from documents it opens on entry and releases on exit. Apple's `PDFView` was tried first, but it loads a machine-learning model and caches that are never freed: reading an 18-page, 259 KB journal article took the app to ~350 MB, rising to 677 MB after entering and leaving reading mode four times.
-- The **signing view** also draws the page as vector content on demand. There is no full-page bitmap.
+- The **signing view** also draws the page as vector content on demand, sized to what is on screen.
 - PDFKit caches each drawn page's decoded images inside its document (tens of MB per scanned page), so the thumbnail workers, the reader and the exporter all release and reopen their documents periodically.
 - **Export** streams page by page. The flattened path writes through a `CGPDFContext`, in chunks: the context holds data proportional to what it has written until it's closed, so large (scan-heavy) exports are written as several chunks and joined by copying pages. Normal documents fit in one chunk.
 - Under memory pressure, all caches and parsed documents are dropped. They're recreated on demand.
@@ -52,7 +52,7 @@ How it stays light:
 ### Files sidebar
 - Drag files to reorder them: each file's pages move as one block
 - Click a file to select its pages
-- Right-click a file to **remove it from the workspace** (or select it and press ⌫), read it, show it in Finder, export only that file, move it to the top or bottom, or restore pages you deleted from it. Removing is undoable and never touches the file on disk.
+- Right-click a file to **remove it from the workspace** (or select it and press ⌫), read it, show it in Finder, export only that file, move it to the top or bottom, or restore pages you deleted from it. Removing is undoable, and the file on disk stays unchanged.
 
 ### Reading
 - Double-click a page (or press Return) to read from there: pages are shown full width in a continuous scroll, exactly as they will export, with rotations and signatures applied
@@ -64,15 +64,15 @@ How it stays light:
 - Select a page and click **Sign** in the toolbar (⇧⌘S), in the grid or while reading
 - Draw a signature with the mouse, or use **trackpad mode**: the trackpad surface maps onto the canvas and you sign with one finger, no clicking (like Preview). Press any key when done.
 - Import a signature image. Transparent PNGs are used as-is. Photos or scans of ink on paper get the white background removed and margins trimmed automatically.
-- Saved signatures live in `~/Library/Application Support/PDFolio/Signatures` and never leave the Mac
+- Saved signatures are stored locally in `~/Library/Application Support/PDFolio/Signatures`
 - Place a signature, then drag to move, drag a corner to resize (aspect locked) and use the arrow keys to nudge. Pinch to zoom the page.
 - Signatures are attached to the page content, so rotating a signed page carries the signature with it
 
 ### Export
-- Exports the current page sequence as one PDF (⌘E). Page content, fonts, text and images are copied as-is: vector stays vector and nothing is rasterized. Page sizes are preserved.
+- Exports the current page sequence as one PDF (⌘E). Page content, fonts, text and images are copied as-is, so vector content stays vector and page sizes are preserved.
 - By default, signatures are embedded as stamp annotations with a real appearance stream, so they show in every PDF reader
 - **Flatten** option: bakes signatures and any existing annotations into the page content so they can't be moved or deleted. Links and form fields become static.
-- Exports run in the background with progress and Cancel. They write to a temporary file first, so a failed or cancelled export never leaves a broken file. Exporting over one of the imported source files is refused.
+- Exports run in the background with progress and Cancel. They write to a temporary file first and replace the destination only when the export completes. Exporting over one of the imported source files is refused.
 
 ## Requirements
 
@@ -123,12 +123,12 @@ Resources               App icon and social preview
 
 ## Not in scope (for now)
 
-Text/content editing, OCR, a full annotation suite, forms, cloud sync, AI features, and certificate-based digital signatures. The signature here is a visual handwritten signature, not a cryptographic one.
+Text/content editing, OCR, a full annotation suite, forms, cloud sync, AI features, and certificate-based digital signatures. The signature is a visual handwritten signature.
 
 ## Known limitations
 
 - Reading mode doesn't support selecting text or clicking links yet
-- Scanned PDFs use more memory (up to ~300 MB while reading or scrolling). That's a fixed-size system cache for decoding large images, and it doesn't grow with page count.
+- Scanned PDFs use more memory (up to ~300 MB while reading or scrolling). That's a fixed-size system cache for decoding large images.
 - Bookmarks/outlines from source PDFs are not carried into the exported file
 - Flattening makes links and form fields non-interactive (that's what flattening means). The default export keeps them.
 
