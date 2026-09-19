@@ -10,6 +10,34 @@ A lightweight, native macOS PDF app for the everyday parts of Acrobat: **organiz
 
 Your source files are never modified. Everything happens on a page list that points into them, and the result is written only when you export.
 
+## Performance
+
+Memory and responsiveness were treated as requirements from the start, not a later optimization.
+
+Measured on an Apple Silicon MacBook (2560×1664 Retina, 4 performance cores). "Generated" pages each contain a JPEG photo, vector art and a paragraph of text. "Scanned" pages are unique A4 images at 300 dpi.
+
+| Scenario | Target | Measured |
+|---|---|---|
+| Empty window, idle | 40–80 MB | **25 MB** |
+| 20 generated pages from 3 files, loaded | 70–150 MB | **55 MB** |
+| Real 18-page journal article (259 KB), loaded | 70–150 MB | **57 MB** |
+| Same article, reading all 18 pages | — | **~91 MB** settled (brief peaks ~170 MB while turning pages fast); **80 MB** after leaving reading mode, stable across repeated reading |
+| 1000 generated pages, scroll top → bottom → top | < 500–700 MB | **peak 188 MB** |
+| 3000 generated pages, same scroll | — | **peak 210 MB** |
+| Add a 40-page scanned PDF: all visible thumbnails shown | responsive | **~120–200 ms** (was ~540 ms with a single render queue) |
+| Export 1000 generated pages (default / flattened) | responsive | **0.9 s / 0.9 s**, footprint < 50 MB |
+| Flattened export, 120 scanned pages (270 MB) | bounded | **288 MB** peak (was 759 MB, growing ~5.5 MB per page) |
+
+How it stays light:
+
+- The workspace stores **page references** (source, page index, rotation, signatures), never page images
+- **Thumbnails** render lazily, only for cells on screen, on a few parallel workers (one per performance core, up to 4). Each worker has its own documents. Requests for cells that scroll away are dropped before rendering. Sizes snap to a few buckets, images live in an `NSCache` with a 48 MB budget, and rotation is a layer transform, so it never re-renders.
+- **Reading mode** is a lightweight custom view that draws pages as vector content, only for the area on screen, from documents it opens on entry and releases on exit. Apple's `PDFView` was tried first, but it loads a machine-learning model and caches that are never freed: reading an 18-page, 259 KB journal article took the app to ~350 MB, rising to 677 MB after entering and leaving reading mode four times.
+- The **signing view** also draws the page as vector content on demand. There is no full-page bitmap.
+- PDFKit caches each drawn page's decoded images inside its document (tens of MB per scanned page), so the thumbnail workers, the reader and the exporter all release and reopen their documents periodically.
+- **Export** streams page by page. The flattened path writes through a `CGPDFContext`, in chunks: the context holds data proportional to what it has written until it's closed, so large (scan-heavy) exports are written as several chunks and joined by copying pages. Normal documents fit in one chunk.
+- Under memory pressure, all caches and parsed documents are dropped. They're recreated on demand.
+
 ## Features
 
 ### Organize and merge
@@ -45,30 +73,6 @@ Your source files are never modified. Everything happens on a page list that poi
 - By default, signatures are embedded as stamp annotations with a real appearance stream, so they show in every PDF reader
 - **Flatten** option: bakes signatures and any existing annotations into the page content so they can't be moved or deleted. Links and form fields become static.
 - Exports run in the background with progress and Cancel. They write to a temporary file first, so a failed or cancelled export never leaves a broken file. Exporting over one of the imported source files is refused.
-
-## Trackpad and keyboard
-
-| Gesture / key | Action |
-|---|---|
-| **Page grid** | |
-| Pinch, ⌘+ / ⌘− | Fewer / more pages per row (1–16) |
-| Double-click or Return | Read from this page |
-| ⌘L / ⌘R | Rotate left / right |
-| ⌘D | Duplicate |
-| ⌫ | Delete selected pages (in the sidebar: remove the selected file) |
-| ⇧⌘S | Sign the selected page |
-| ⌘Z / ⇧⌘Z | Undo / redo |
-| **Reading** | |
-| ← → / Page Up, Page Down / Home, End | Turn pages |
-| Two-finger swipe left / right | Turn one page |
-| Pinch | Zoom |
-| ⇧⌘S | Sign the page being read |
-| Esc | Back to the page grid |
-| **Signing** | |
-| Pinch | Zoom the page |
-| Arrow keys / ⌫ | Nudge / remove the selected signature |
-
-Gestures are kept to the standard macOS ones; every action is also in the toolbar, the menus or a right-click menu. If you use [TrackTab](https://github.com/yongkang-yang/TrackTab), its three-finger swipe left/right sends ⌘Z / ⇧⌘Z, which drives PDFolio's undo and redo directly.
 
 ## Requirements
 
@@ -107,32 +111,6 @@ Two launch arguments help check the UI end to end:
 
 - `--scroll-benchmark --quit <files…>`: scrolls the whole grid down and back up, prints peak memory, then quits
 - `--snapshot <dir> <files…>`: renders the main window, the signing sheet, the signature pad and reading mode to PNGs. This works without Screen Recording permission.
-
-## Performance
-
-Performance is an MVP requirement, and the design follows from it:
-
-- The workspace stores **page references** (source, page index, rotation, signatures), never page images
-- **Thumbnails** render lazily, only for cells on screen, on a few parallel workers (one per performance core, up to 4). Each worker has its own documents. Requests for cells that scroll away are dropped before rendering. Sizes snap to a few buckets, images live in an `NSCache` with a 48 MB budget, and rotation is a layer transform, so it never re-renders.
-- **Reading mode** is a lightweight custom view that draws pages as vector content, only for the area on screen, from documents it opens on entry and releases on exit. Apple's `PDFView` was tried first, but it loads a machine-learning model and caches that are never freed: reading an 18-page, 259 KB journal article took the app to ~350 MB, rising to 677 MB after entering and leaving reading mode four times.
-- The **signing view** also draws the page as vector content on demand. There is no full-page bitmap.
-- PDFKit caches each drawn page's decoded images inside its document (tens of MB per scanned page), so the thumbnail workers, the reader and the exporter all release and reopen their documents periodically.
-- **Export** streams page by page. The flattened path writes through a `CGPDFContext`, in chunks: the context holds data proportional to what it has written until it's closed, so large (scan-heavy) exports are written as several chunks and joined by copying pages. Normal documents fit in one chunk.
-- Under memory pressure, all caches and parsed documents are dropped. They're recreated on demand.
-
-Measured on an Apple Silicon MacBook (2560×1664 Retina, 4 performance cores). "Generated" pages each contain a JPEG photo, vector art and a paragraph of text. "Scanned" pages are unique A4 images at 300 dpi.
-
-| Scenario | Target | Measured |
-|---|---|---|
-| Empty window, idle | 40–80 MB | **25 MB** |
-| 20 generated pages from 3 files, loaded | 70–150 MB | **55 MB** |
-| Real 18-page journal article (259 KB), loaded | 70–150 MB | **57 MB** |
-| Same article, reading all 18 pages | — | **~91 MB** settled (brief peaks ~170 MB while turning pages fast); **80 MB** after leaving reading mode, stable across repeated reading |
-| 1000 generated pages, scroll top → bottom → top | < 500–700 MB | **peak 188 MB** |
-| 3000 generated pages, same scroll | — | **peak 210 MB** |
-| Add a 40-page scanned PDF: all visible thumbnails shown | responsive | **~120–200 ms** (was ~540 ms with a single render queue) |
-| Export 1000 generated pages (default / flattened) | responsive | **0.9 s / 0.9 s**, footprint < 50 MB |
-| Flattened export, 120 scanned pages (270 MB) | bounded | **288 MB** peak (was 759 MB, growing ~5.5 MB per page) |
 
 ## Project layout
 
