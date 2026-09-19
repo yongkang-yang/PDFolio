@@ -11,7 +11,8 @@ import PDFolioCore
 /// - Sizes snap to a few buckets so pinch-zooming reuses renders.
 final class ThumbnailCache {
     static let byteBudget = 48 * 1024 * 1024
-    private static let buckets: [CGFloat] = [128, 192, 256, 384, 512, 768, 1024]
+    // Up to 2048 px for one page per row on a large Retina window.
+    private static let buckets: [CGFloat] = [128, 192, 256, 384, 512, 768, 1024, 1536, 2048]
 
     private let cache = NSCache<NSString, CGImageBox>()
     private let queue = DispatchQueue(label: "PDFolio.thumbnails", qos: .userInitiated)

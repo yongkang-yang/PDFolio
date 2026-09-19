@@ -14,7 +14,7 @@ Your source files are never modified. Everything happens on a page list that poi
 
 ### Organize and merge
 - Drop any number of PDFs or images (PNG, JPEG, HEIC, …) into the window, the sidebar, or a gap between pages
-- All pages appear in one thumbnail grid. Each page is tagged with its file's color, so pages stay identifiable after mixing
+- All pages appear in one thumbnail grid, from 1 to 16 pages per row (toolbar slider, pinch, or ⌘+ / ⌘−). At 1 per row each page fills the window. Each page is tagged with its file's color, so pages stay identifiable after mixing
 - Multi-select (click, ⇧/⌘-click, rubber band), then drag to reorder, including across files
 - **File-level ordering**: drag files in the sidebar to regroup their pages as whole blocks; click a file to select its pages
 - Right-click a file in the sidebar to **remove it from the workspace** (or select it and press ⌫), read it, show it in Finder, export only that file, move it to the top or bottom, or restore pages you deleted from it. Removing is undoable and never touches the file on disk.
@@ -51,7 +51,7 @@ Your source files are never modified. Everything happens on a page list that poi
 | Gesture / key | Action |
 |---|---|
 | Two-finger scroll | Scroll the page grid or the page being signed |
-| Pinch | Resize thumbnails; zoom the page in the signing view |
+| Pinch | Fewer / more pages per row (1–16); zoom the page in the signing view |
 | Double-click or Return | Read from this page |
 | ← → / Page Up, Page Down / Home, End | Turn pages while reading |
 | Two-finger swipe left / right | Turn pages while reading |
@@ -61,7 +61,7 @@ Your source files are never modified. Everything happens on a page list that poi
 | ⌘D | Duplicate |
 | ⌫ | Delete selected pages (or the selected signature in the signing view) |
 | ⌘Z / ⇧⌘Z | Undo / redo |
-| ⌘+ / ⌘− | Larger / smaller thumbnails |
+| ⌘+ / ⌘− | Fewer / more pages per row |
 
 Gestures are kept to the standard macOS ones; every action is also in the toolbar and menus. If you use [TrackTab](https://github.com/yongkang-yang/TrackTab), its three-finger swipe left/right sends ⌘Z / ⇧⌘Z, which drives PDFolio's undo and redo directly.
 

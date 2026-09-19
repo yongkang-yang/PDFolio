@@ -19,9 +19,9 @@ final class PageCollectionView: NSCollectionView {
 
     override var acceptsFirstResponder: Bool { true }
 
-    // Pinch: resize thumbnails.
+    // Pinch: fewer, larger pages per row when spreading; more when pinching.
     override func magnify(with event: NSEvent) {
-        grid?.zoom(by: 1 + event.magnification)
+        grid?.pinch(event)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -84,8 +84,8 @@ final class PageCollectionView: NSCollectionView {
 }
 
 final class PageGridViewController: NSViewController {
-    static let minZoom: CGFloat = 90
-    static let maxZoom: CGFloat = 420
+    static let minColumns = 1
+    static let maxColumns = 16
 
     let workspace: Workspace
     weak var delegate: PageGridDelegate?
@@ -95,16 +95,19 @@ final class PageGridViewController: NSViewController {
     private let layout = NSCollectionViewFlowLayout()
     private let emptyState = EmptyStateView()
 
-    /// Thumbnail width in points.
-    private(set) var zoom: CGFloat = 170 {
-        didSet { applyZoom() }
+    /// Pages per row. Thumbnail size follows from the window width.
+    private(set) var columns = 5 {
+        didSet { applyLayout() }
     }
+    private var pinchAccumulator: CGFloat = 0
+    private var lastLayoutSize: CGSize = .zero
 
     init(workspace: Workspace) {
         self.workspace = workspace
         super.init(nibName: nil, bundle: nil)
-        if let saved = UserDefaults.standard.object(forKey: "thumbnailZoom") as? CGFloat {
-            zoom = min(max(saved, Self.minZoom), Self.maxZoom)
+        if UserDefaults.standard.object(forKey: "thumbnailColumns") != nil {
+            let saved = UserDefaults.standard.integer(forKey: "thumbnailColumns")
+            columns = min(max(saved, Self.minColumns), Self.maxColumns)
         }
     }
 
@@ -156,8 +159,17 @@ final class PageGridViewController: NSViewController {
             emptyState.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor, constant: -40)
         ])
         view = root
-        applyZoom()
         updateEmptyState()
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        // Column widths depend on the viewport, so re-fit on window resize.
+        let size = scrollView.contentView.bounds.size
+        if abs(size.width - lastLayoutSize.width) > 0.5 || abs(size.height - lastLayoutSize.height) > 0.5 {
+            lastLayoutSize = size
+            applyLayout()
+        }
     }
 
     // MARK: Data
@@ -224,23 +236,59 @@ final class PageGridViewController: NSViewController {
         }
     }
 
-    // MARK: Zoom
+    // MARK: Pages per row
 
-    func zoom(by factor: CGFloat) {
-        setZoom(zoom * factor)
-    }
-
-    func setZoom(_ value: CGFloat) {
-        zoom = min(max(value, Self.minZoom), Self.maxZoom)
-        UserDefaults.standard.set(zoom, forKey: "thumbnailZoom")
+    func setColumns(_ value: Int) {
+        let clamped = min(max(value, Self.minColumns), Self.maxColumns)
+        guard clamped != columns else { return }
+        columns = clamped
+        UserDefaults.standard.set(columns, forKey: "thumbnailColumns")
         delegate?.pageGridZoomDidChange(self)
     }
 
-    private func applyZoom() {
-        // Keep the page at the top of the viewport anchored while resizing.
-        let anchor = collectionView?.indexPathsForVisibleItems().min()
-        layout.itemSize = NSSize(width: zoom + 12, height: (zoom * 1.3).rounded() + 28)
-        guard let collectionView else { return }
+    func showLarger() { setColumns(columns - 1) }
+    func showSmaller() { setColumns(columns + 1) }
+
+    /// One column step per ~12% of pinch, so a single pinch can move several
+    /// steps but small wobbles don't.
+    func pinch(_ event: NSEvent) {
+        if event.phase == .began { pinchAccumulator = 0 }
+        pinchAccumulator += event.magnification
+        let step: CGFloat = 0.12
+        while pinchAccumulator > step {
+            pinchAccumulator -= step
+            showLarger()
+        }
+        while pinchAccumulator < -step {
+            pinchAccumulator += step
+            showSmaller()
+        }
+    }
+
+    /// Room for the page number under each thumbnail, and the thumbnail's
+    /// inset inside its cell (see `PageItem`).
+    private static let labelHeight: CGFloat = 28
+    private static let cellPadding: CGFloat = 12
+
+    private func applyLayout() {
+        guard let collectionView, let scrollView else { return }
+        let viewport = scrollView.contentView.bounds.size
+        let insets = layout.sectionInset
+        let available = viewport.width - insets.left - insets.right
+        guard available > 0 else { return }
+        let n = CGFloat(columns)
+        // Round down so rounding never pushes the last column onto a new row.
+        let width = max(24, floor((available - layout.minimumInteritemSpacing * (n - 1)) / n) - 1)
+        let thumbWidth = width - Self.cellPadding
+        // Never taller than the visible area, so at one page per row the
+        // whole page stays in view.
+        // The scroll view extends under the toolbar; only count the safe area.
+        let visibleHeight = min(viewport.height, view.safeAreaRect.height)
+        let maxThumbHeight = max(visibleHeight - insets.top - insets.bottom - Self.labelHeight, 80)
+        let thumbHeight = min((thumbWidth * 1.3).rounded(), maxThumbHeight)
+
+        let anchor = collectionView.indexPathsForVisibleItems().min()
+        layout.itemSize = NSSize(width: width, height: thumbHeight + Self.labelHeight)
         layout.invalidateLayout()
         if let anchor {
             collectionView.scrollToItems(at: [anchor], scrollPosition: .top)
@@ -255,7 +303,8 @@ final class PageGridViewController: NSViewController {
 
     private var thumbnailBucket: CGFloat {
         let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        return ThumbnailCache.bucket(for: zoom * 1.3 * scale)
+        let longest = max(layout.itemSize.width - Self.cellPadding, layout.itemSize.height - Self.labelHeight)
+        return ThumbnailCache.bucket(for: longest * scale)
     }
 
     private func loadThumbnail(for item: PageItem, at index: Int) {
@@ -305,7 +354,7 @@ final class PageGridViewController: NSViewController {
 
 extension ThumbnailCache {
     static func bucketsBelow(_ bucket: CGFloat) -> [CGFloat] {
-        [768, 512, 384, 256, 192, 128].filter { $0 < bucket }
+        [1536, 1024, 768, 512, 384, 256, 192, 128].filter { $0 < bucket }
     }
 }
 

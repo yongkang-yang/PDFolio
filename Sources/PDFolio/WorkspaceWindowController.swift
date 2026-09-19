@@ -11,8 +11,10 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     private let content = ContentController()
     private let sidebar: SourceListViewController
     private let split = NSSplitViewController()
-    private let zoomSlider = NSSlider(value: 170, minValue: Double(PageGridViewController.minZoom),
-                                      maxValue: Double(PageGridViewController.maxZoom), target: nil, action: nil)
+    /// Thumbnail size as pages per row, flipped so dragging right means
+    /// larger pages (fewer per row): value = maxColumns + 1 - columns.
+    private let zoomSlider = NSSlider(value: 12, minValue: Double(PageGridViewController.minColumns),
+                                      maxValue: Double(PageGridViewController.maxColumns), target: nil, action: nil)
     var onClose: (() -> Void)?
 
     init() {
@@ -59,7 +61,9 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         sidebar.delegate = self
         zoomSlider.target = self
         zoomSlider.action = #selector(zoomSliderChanged(_:))
-        zoomSlider.doubleValue = Double(grid.zoom)
+        zoomSlider.numberOfTickMarks = PageGridViewController.maxColumns
+        zoomSlider.allowsTickMarkValuesOnly = true
+        syncZoomSlider()
 
         workspace.observe { [weak self] change in
             guard let self else { return }
@@ -282,11 +286,16 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
 
     // MARK: Zoom
 
-    @objc func zoomIn(_ sender: Any?) { grid.zoom(by: 1.2) }
-    @objc func zoomOut(_ sender: Any?) { grid.zoom(by: 1 / 1.2) }
+    @objc func zoomIn(_ sender: Any?) { grid.showLarger() }
+    @objc func zoomOut(_ sender: Any?) { grid.showSmaller() }
 
     @objc private func zoomSliderChanged(_ sender: NSSlider) {
-        grid.setZoom(CGFloat(sender.doubleValue))
+        grid.setColumns(PageGridViewController.maxColumns + 1 - Int(sender.doubleValue.rounded()))
+    }
+
+    private func syncZoomSlider() {
+        zoomSlider.doubleValue = Double(PageGridViewController.maxColumns + 1 - grid.columns)
+        zoomSlider.toolTip = grid.columns == 1 ? "1 page per row" : "\(grid.columns) pages per row"
     }
 
     // MARK: Export
@@ -454,12 +463,12 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         case Item.sign: return button("Sign", "signature", #selector(signPage(_:)), "Add a signature to the selected page, or the page being read (⇧⌘S)")
         case Item.zoom:
             let item = NSToolbarItem(itemIdentifier: id)
-            item.label = "Thumbnail Size"
-            item.paletteLabel = "Thumbnail Size"
+            item.label = "Pages per Row"
+            item.paletteLabel = "Pages per Row"
             zoomSlider.controlSize = .small
             zoomSlider.widthAnchor.constraint(equalToConstant: 110).isActive = true
             item.view = zoomSlider
-            item.toolTip = "Thumbnail size — or pinch on the trackpad"
+            item.toolTip = "Pages per row, from 1 to 16 — or pinch on the trackpad"
             return item
         case Item.export:
             let item = button("Export", "square.and.arrow.up", #selector(exportPDF(_:)), "Export as one PDF (⌘E)")
@@ -543,7 +552,7 @@ extension WorkspaceWindowController: PageGridDelegate, SourceListDelegate {
     }
 
     func pageGridZoomDidChange(_ grid: PageGridViewController) {
-        zoomSlider.doubleValue = Double(grid.zoom)
+        syncZoomSlider()
     }
 
     func sourceList(_ list: SourceListViewController, didSelect source: SourceID) {

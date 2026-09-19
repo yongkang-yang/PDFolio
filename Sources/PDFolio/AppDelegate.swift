@@ -143,8 +143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
 
         submenu("View", [
-            item("Larger Thumbnails", #selector(WorkspaceWindowController.zoomIn(_:)), "+"),
-            item("Smaller Thumbnails", #selector(WorkspaceWindowController.zoomOut(_:)), "-"),
+            item("Fewer Pages per Row", #selector(WorkspaceWindowController.zoomIn(_:)), "+"),
+            item("More Pages per Row", #selector(WorkspaceWindowController.zoomOut(_:)), "-"),
             .separator(),
             item("Toggle Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control]),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
