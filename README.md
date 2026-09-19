@@ -1,6 +1,8 @@
-# PDFolio
+<p align="center">
+  <img src="Resources/social-preview.png" alt="PDFolio — native macOS app for organizing pages, merging PDFs, and adding signatures">
+</p>
 
-<img src="Resources/AppIcon-1024.png" width="128" align="right" alt="PDFolio icon">
+# PDFolio
 
 A lightweight, native macOS PDF utility for the everyday parts of Acrobat: **organize pages**, **combine PDFs**, and **add a handwritten signature**. Fast, local-only, and comfortable on a trackpad.
 
