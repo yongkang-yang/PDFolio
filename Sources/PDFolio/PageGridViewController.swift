@@ -16,36 +16,12 @@ protocol PageGridDelegate: AnyObject {
 /// Collection view with the trackpad and keyboard shortcuts for organizing.
 final class PageCollectionView: NSCollectionView {
     weak var grid: PageGridViewController?
-    private var rotationAccumulator: CGFloat = 0
 
     override var acceptsFirstResponder: Bool { true }
 
     // Pinch: resize thumbnails.
     override func magnify(with event: NSEvent) {
         grid?.zoom(by: 1 + event.magnification)
-    }
-
-    // Two-finger rotate: turn the selection a quarter turn per ~35° of twist.
-    override func rotate(with event: NSEvent) {
-        if event.phase == .began { rotationAccumulator = 0 }
-        rotationAccumulator += CGFloat(event.rotation)
-        // Trackpad rotation is counter-clockwise positive.
-        while rotationAccumulator > 35 {
-            rotationAccumulator -= 90
-            grid?.rotateSelection(by: -90)
-        }
-        while rotationAccumulator < -35 {
-            rotationAccumulator += 90
-            grid?.rotateSelection(by: 90)
-        }
-    }
-
-    // Two-finger double tap: open the page under the pointer for signing.
-    override func smartMagnify(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        if let indexPath = indexPathForItem(at: point) {
-            grid?.openPage(at: indexPath.item)
-        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -409,7 +385,7 @@ final class EmptyStateView: NSStackView {
         let title = NSTextField(labelWithString: "Drop PDFs or images here")
         title.font = .systemFont(ofSize: 17, weight: .semibold)
         title.textColor = .secondaryLabelColor
-        let subtitle = NSTextField(wrappingLabelWithString: "Reorder pages by dragging. Pinch to resize thumbnails, twist with two fingers to rotate, double-tap a page to sign it.")
+        let subtitle = NSTextField(wrappingLabelWithString: "Reorder pages by dragging. Pinch to resize thumbnails, double-click a page to sign it.")
         subtitle.alignment = .center
         subtitle.textColor = .tertiaryLabelColor
         subtitle.font = .systemFont(ofSize: 12)

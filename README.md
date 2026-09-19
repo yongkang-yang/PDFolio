@@ -2,7 +2,7 @@
 
 <img src="Resources/AppIcon-1024.png" width="128" align="right" alt="PDFolio icon">
 
-A lightweight, native macOS PDF utility for the everyday parts of Acrobat: **organize pages**, **combine PDFs**, and **add a handwritten signature**. Fast, local-only, and designed around the trackpad.
+A lightweight, native macOS PDF utility for the everyday parts of Acrobat: **organize pages**, **combine PDFs**, and **add a handwritten signature**. Fast, local-only, and comfortable on a trackpad.
 
 **Import PDFs → Organize Pages → Merge → Add Signature → Export PDF**
 
@@ -38,16 +38,16 @@ Your source files are never modified. Everything happens on a page list that poi
 
 | Gesture / key | Action |
 |---|---|
-| Pinch | Resize thumbnails |
-| Two-finger twist | Rotate selected pages (a quarter turn per ~35° of twist) |
-| Two-finger double-tap, double-click, or Return | Open the page for signing |
+| Two-finger scroll | Scroll the page grid or the page being signed |
+| Pinch | Resize thumbnails; zoom the page in the signing view |
+| Double-click or Return | Open the page for signing |
 | ⌘L / ⌘R | Rotate left / right |
 | ⌘D | Duplicate |
 | ⌫ | Delete selected pages (or the selected signature in the signing view) |
 | ⌘Z / ⇧⌘Z | Undo / redo |
 | ⌘+ / ⌘− | Larger / smaller thumbnails |
 
-Gestures are shortcuts on top of the normal macOS controls: every action is also in the toolbar and menus. If you use [TrackTab](https://github.com/yongkang-yang/TrackTab), its three-finger swipe left/right sends ⌘Z / ⇧⌘Z, which drives PDFolio's undo and redo directly.
+Gestures are kept to the standard macOS ones; every action is also in the toolbar and menus. If you use [TrackTab](https://github.com/yongkang-yang/TrackTab), its three-finger swipe left/right sends ⌘Z / ⇧⌘Z, which drives PDFolio's undo and redo directly.
 
 ## Requirements
 
