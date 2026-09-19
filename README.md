@@ -4,9 +4,9 @@
 
 # PDFolio
 
-A lightweight, native macOS PDF utility for the everyday parts of Acrobat: **organize pages**, **combine PDFs**, and **add a handwritten signature**. Fast, local-only, and comfortable on a trackpad.
+A lightweight, native macOS PDF app for the everyday parts of Acrobat: **organize pages**, **combine PDFs**, **read**, and **add a handwritten signature**. Fast, light on memory, local-only, and comfortable on a trackpad.
 
-**Import PDFs → Organize Pages → Merge → Add Signature → Export PDF**
+**Import PDFs → Organize Pages → Merge → Read → Add Signature → Export PDF**
 
 Your source files are never modified. Everything happens on a page list that points into them, and the result is written only when you export.
 
@@ -14,22 +14,21 @@ Your source files are never modified. Everything happens on a page list that poi
 
 ### Organize and merge
 - Drop any number of PDFs or images (PNG, JPEG, HEIC, …) into the window, the sidebar, or a gap between pages
-- All pages appear in one thumbnail grid, from 1 to 16 pages per row (toolbar slider, pinch, or ⌘+ / ⌘−). At 1 per row each page fills the window. Each page is tagged with its file's color, so pages stay identifiable after mixing
+- All pages appear in one thumbnail grid, from 1 to 16 pages per row (toolbar slider, pinch, or ⌘+ / ⌘−). At 1 per row each page fills the window. Each page is tagged with its file's color, so pages stay identifiable after mixing.
 - Multi-select (click, ⇧/⌘-click, rubber band), then drag to reorder, including across files
-- **File-level ordering**: drag files in the sidebar to regroup their pages as whole blocks; click a file to select its pages
-- Right-click a file in the sidebar to **remove it from the workspace** (or select it and press ⌫), read it, show it in Finder, export only that file, move it to the top or bottom, or restore pages you deleted from it. Removing is undoable and never touches the file on disk.
+- Rotate, duplicate and delete pages; insert a PDF or image after the selection (⇧⌘I); extract the selected pages into a new PDF (⇧⌘E)
 - Right-click a page (or a selection) to read, sign, rotate, duplicate, extract, insert files after it, or delete
-- Rotate, delete, duplicate
-- Insert a PDF or image after the selection (⇧⌘I)
-- Extract the selected pages into a new PDF (⇧⌘E)
 - Unlimited undo / redo for every page operation
 - Password-protected PDFs prompt for their password
 
+### Files sidebar
+- Drag files to reorder them: each file's pages move as one block
+- Click a file to select its pages
+- Right-click a file to **remove it from the workspace** (or select it and press ⌫), read it, show it in Finder, export only that file, move it to the top or bottom, or restore pages you deleted from it. Removing is undoable and never touches the file on disk.
+
 ### Reading
-- Double-click a page (or press Return) to read: pages are shown full size in a continuous scroll, exactly as they will export, with rotations and signatures applied
-- Turn pages with ← / →, Page Up / Page Down, Home / End, the buttons at the bottom, or a two-finger swipe left/right
-- Pinch to zoom in on a page
-- Drawn by a lightweight view that renders only what's on screen: reading an 18-page journal article settles at ~90 MB, and leaving reading mode releases it. (Apple's `PDFView` was tried first; it loads a machine-learning model and caches that it never frees, using 300+ MB for the same article.) Selecting text and clicking links aren't supported in reading mode yet.
+- Double-click a page (or press Return) to read from there: pages are shown full width in a continuous scroll, exactly as they will export, with rotations and signatures applied
+- Turn pages with ← / →, Page Up / Page Down, Home / End, the buttons at the bottom, or a two-finger swipe left / right. Pinch to zoom.
 - The page on screen counts as the selection, so the toolbar's **Sign**, **Rotate** and **Delete** apply to it
 - Press Esc or click **Pages** to go back to the grid, with the page you were reading selected
 
@@ -51,21 +50,25 @@ Your source files are never modified. Everything happens on a page list that poi
 
 | Gesture / key | Action |
 |---|---|
-| Two-finger scroll | Scroll the page grid or the page being signed |
-| Pinch | Fewer / more pages per row (1–16); zoom the page in the signing view |
+| **Page grid** | |
+| Pinch, ⌘+ / ⌘− | Fewer / more pages per row (1–16) |
 | Double-click or Return | Read from this page |
-| ← → / Page Up, Page Down / Home, End | Turn pages while reading |
-| Pinch (while reading) | Zoom the page |
-| Two-finger swipe left / right | Turn pages while reading |
-| Esc | Back from reading to the page grid |
-| ⇧⌘S | Sign the selected page, or the page being read |
 | ⌘L / ⌘R | Rotate left / right |
 | ⌘D | Duplicate |
-| ⌫ | Delete selected pages (or the selected signature in the signing view) |
+| ⌫ | Delete selected pages (in the sidebar: remove the selected file) |
+| ⇧⌘S | Sign the selected page |
 | ⌘Z / ⇧⌘Z | Undo / redo |
-| ⌘+ / ⌘− | Fewer / more pages per row |
+| **Reading** | |
+| ← → / Page Up, Page Down / Home, End | Turn pages |
+| Two-finger swipe left / right | Turn one page |
+| Pinch | Zoom |
+| ⇧⌘S | Sign the page being read |
+| Esc | Back to the page grid |
+| **Signing** | |
+| Pinch | Zoom the page |
+| Arrow keys / ⌫ | Nudge / remove the selected signature |
 
-Gestures are kept to the standard macOS ones; every action is also in the toolbar and menus. If you use [TrackTab](https://github.com/yongkang-yang/TrackTab), its three-finger swipe left/right sends ⌘Z / ⇧⌘Z, which drives PDFolio's undo and redo directly.
+Gestures are kept to the standard macOS ones; every action is also in the toolbar, the menus or a right-click menu. If you use [TrackTab](https://github.com/yongkang-yang/TrackTab), its three-finger swipe left/right sends ⌘Z / ⇧⌘Z, which drives PDFolio's undo and redo directly.
 
 ## Requirements
 
@@ -94,43 +97,50 @@ swift run -c release pdfolio-checks --perf-file big.pdf   # benchmark a real fil
 swift run -c release pdfolio-checks --skip-perf --flatten-only --perf-file scans.pdf  # flattened export only, in a fresh process
 ```
 
-It covers page-list operations (move, remove, duplicate, rotate, file regrouping, insert), rotation geometry, and export in both modes. For export it renders the output and checks, by pixels, that each signature lands in the right place and orientation, including on pre-rotated pages and pages rotated after signing. It also checks text preservation, page sizes, source-file protection, cancellation and cleanup, image import, and signature cleanup.
+It covers:
+- Page-list operations: move, remove, duplicate, rotate, insert, and file-level operations (regroup, remove, move to top/bottom, restore deleted pages)
+- Rotation geometry
+- Export in both modes, including a flattened export forced into many chunks. The output is rendered and checked by pixels: each signature must land in the right place and orientation, including on pre-rotated pages and pages rotated after signing.
+- Text preservation, page sizes, source-file protection, cancellation and cleanup, image import, and signature cleanup
 
 Two launch arguments help check the UI end to end:
 
 - `--scroll-benchmark --quit <files…>`: scrolls the whole grid down and back up, prints peak memory, then quits
-- `--snapshot <dir> <files…>`: renders the main window, the signing sheet and the signature pad to PNGs. This works without Screen Recording permission.
+- `--snapshot <dir> <files…>`: renders the main window, the signing sheet, the signature pad and reading mode to PNGs. This works without Screen Recording permission.
 
 ## Performance
 
 Performance is an MVP requirement, and the design follows from it:
 
 - The workspace stores **page references** (source, page index, rotation, signatures), never page images
-- Thumbnails render lazily on a background queue, only for cells on screen. Requests for cells that scroll away are dropped before rendering.
-- Thumbnail sizes snap to a few buckets, and images live in an `NSCache` with a 48 MB budget. Rotation is a layer transform, so it never re-renders.
-- The signing view draws the page as vector content on demand. There is no full-page bitmap.
-- Export streams page by page. The flattened path writes through a `CGPDFContext`, in chunks: the context holds data proportional to what it has written until it's closed, so large (scan-heavy) exports are written as several chunks and joined by copying pages. Normal documents fit in one chunk.
-- Thumbnails render on a few parallel workers, each with its own documents, and those documents are periodically released because PDFKit caches decoded page images in them.
+- **Thumbnails** render lazily, only for cells on screen, on a few parallel workers (one per performance core, up to 4). Each worker has its own documents. Requests for cells that scroll away are dropped before rendering. Sizes snap to a few buckets, images live in an `NSCache` with a 48 MB budget, and rotation is a layer transform, so it never re-renders.
+- **Reading mode** is a lightweight custom view that draws pages as vector content, only for the area on screen, from documents it opens on entry and releases on exit. Apple's `PDFView` was tried first, but it loads a machine-learning model and caches that are never freed: reading an 18-page, 259 KB journal article took the app to ~350 MB, rising to 677 MB after entering and leaving reading mode four times.
+- The **signing view** also draws the page as vector content on demand. There is no full-page bitmap.
+- PDFKit caches each drawn page's decoded images inside its document (tens of MB per scanned page), so the thumbnail workers, the reader and the exporter all release and reopen their documents periodically.
+- **Export** streams page by page. The flattened path writes through a `CGPDFContext`, in chunks: the context holds data proportional to what it has written until it's closed, so large (scan-heavy) exports are written as several chunks and joined by copying pages. Normal documents fit in one chunk.
 - Under memory pressure, all caches and parsed documents are dropped. They're recreated on demand.
 
-Measured on an Apple Silicon Mac (MacBook, 2560×1664 Retina) with generated pages that each contain a JPEG photo, vector art and a paragraph of text:
+Measured on an Apple Silicon MacBook (2560×1664 Retina, 4 performance cores). "Generated" pages each contain a JPEG photo, vector art and a paragraph of text. "Scanned" pages are unique A4 images at 300 dpi.
 
 | Scenario | Target | Measured |
 |---|---|---|
 | Empty window, idle | 40–80 MB | **25 MB** |
-| 20 pages from 3 files, loaded | 70–150 MB | **52 MB** |
-| 1000 pages, scroll top → bottom → top | < 500–700 MB | **peak 185 MB** |
-| 3000 pages, same scroll | — | **peak 223 MB** |
-| Export 1000 pages (assembled / flattened) | responsive | **0.9 s / 0.9 s**, footprint < 50 MB |
-| Flattened export, 120 scanned pages (270 MB, A4 @300 dpi) | bounded | **288 MB** peak (was 759 MB, growing ~5.5 MB per page) |
+| 20 generated pages from 3 files, loaded | 70–150 MB | **55 MB** |
+| Real 18-page journal article (259 KB), loaded | 70–150 MB | **57 MB** |
+| Same article, reading all 18 pages | — | **~91 MB** settled (brief peaks ~170 MB while turning pages fast); **80 MB** after leaving reading mode, stable across repeated reading |
+| 1000 generated pages, scroll top → bottom → top | < 500–700 MB | **peak 188 MB** |
+| 3000 generated pages, same scroll | — | **peak 210 MB** |
+| Add a 40-page scanned PDF: all visible thumbnails shown | responsive | **~120–200 ms** (was ~540 ms with a single render queue) |
+| Export 1000 generated pages (default / flattened) | responsive | **0.9 s / 0.9 s**, footprint < 50 MB |
+| Flattened export, 120 scanned pages (270 MB) | bounded | **288 MB** peak (was 759 MB, growing ~5.5 MB per page) |
 
 ## Project layout
 
 ```
 Sources/PDFolioCore     Model, page-list ops, geometry, export, thumbnail renderer (no UI)
-Sources/PDFolio         AppKit app: window, grid, sidebar, signing, signature pad
+Sources/PDFolio         AppKit app: window, page grid, files sidebar, reading mode, signing, signature pad
 Sources/PDFolioChecks   Check runner and benchmarks
-Resources               App icon
+Resources               App icon and social preview
 ```
 
 ## Not in scope (for now)
@@ -139,6 +149,8 @@ Text/content editing, OCR, a full annotation suite, forms, cloud sync, AI featur
 
 ## Known limitations
 
+- Reading mode doesn't support selecting text or clicking links yet
+- Scanned PDFs use more memory (up to ~300 MB while reading or scrolling). That's a fixed-size system cache for decoding large images, and it doesn't grow with page count.
 - Bookmarks/outlines from source PDFs are not carried into the exported file
 - Flattening makes links and form fields non-interactive (that's what flattening means). The default export keeps them.
 
