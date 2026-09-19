@@ -28,7 +28,8 @@ Your source files are never modified. Everything happens on a page list that poi
 ### Reading
 - Double-click a page (or press Return) to read: pages are shown full size in a continuous scroll, exactly as they will export, with rotations and signatures applied
 - Turn pages with ← / →, Page Up / Page Down, Home / End, the buttons at the bottom, or a two-finger swipe left/right
-- Text can be selected and copied, and links work
+- Pinch to zoom in on a page
+- Drawn by a lightweight view that renders only what's on screen: reading an 18-page journal article settles at ~90 MB, and leaving reading mode releases it. (Apple's `PDFView` was tried first; it loads a machine-learning model and caches that it never frees, using 300+ MB for the same article.) Selecting text and clicking links aren't supported in reading mode yet.
 - The page on screen counts as the selection, so the toolbar's **Sign**, **Rotate** and **Delete** apply to it
 - Press Esc or click **Pages** to go back to the grid, with the page you were reading selected
 
@@ -54,6 +55,7 @@ Your source files are never modified. Everything happens on a page list that poi
 | Pinch | Fewer / more pages per row (1–16); zoom the page in the signing view |
 | Double-click or Return | Read from this page |
 | ← → / Page Up, Page Down / Home, End | Turn pages while reading |
+| Pinch (while reading) | Zoom the page |
 | Two-finger swipe left / right | Turn pages while reading |
 | Esc | Back from reading to the page grid |
 | ⇧⌘S | Sign the selected page, or the page being read |
