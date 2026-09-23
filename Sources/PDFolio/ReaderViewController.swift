@@ -57,6 +57,7 @@ private final class ReaderDocumentView: NSView {
     private var totalRotations: [Int] = []
     private(set) var frames: [CGRect] = []
     var onKey: ((NSEvent) -> Bool)?
+    var onDoubleClick: (() -> Void)?
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -126,6 +127,16 @@ private final class ReaderDocumentView: NSView {
         if onKey?(event) != true {
             super.keyDown(with: event)
         }
+    }
+
+    // Double-click goes back to organizing, mirroring the double-click that
+    // started reading.
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            onDoubleClick?()
+            return
+        }
+        super.mouseDown(with: event)
     }
 }
 
@@ -210,6 +221,7 @@ final class ReaderViewController: NSViewController {
         }
         documentView.assets = workspace.assets
         documentView.onKey = { [weak self] event in self?.handleKey(event) ?? false }
+        documentView.onDoubleClick = { [weak self] in self?.exitReader() }
 
         let back = NSButton(title: "Pages", image: NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)!,
                             target: self, action: #selector(exitReader))

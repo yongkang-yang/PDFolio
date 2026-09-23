@@ -58,7 +58,7 @@ How it stays light:
 - Double-click a page (or press Return) to read from there: pages are shown full width in a continuous scroll, exactly as they will export, with rotations and signatures applied
 - Turn pages with ← / →, Page Up / Page Down, Home / End, the buttons at the bottom, or a two-finger swipe left / right. Pinch to zoom.
 - The page on screen counts as the selection, so the toolbar's **Sign**, **Rotate** and **Delete** apply to it
-- Press Esc or click **Pages** to go back to the grid, with the page you were reading selected
+- Press Esc, double-click the page again, or click **Pages** to go back to the grid, with the page you were reading selected
 
 ### Signatures
 - Select a page and click **Sign** in the toolbar (⇧⌘S), in the grid or while reading
