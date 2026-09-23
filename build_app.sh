@@ -74,7 +74,26 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-/usr/bin/codesign --force --deep --sign - "$APP"
+# Sign with a stable identity so macOS privacy grants (Accessibility, etc.)
+# survive rebuilds; an ad-hoc signature changes every build and TCC treats
+# each one as a new app. Identities are matched by SHA-1 hash because two
+# certificates with the same common name make codesign refuse an ambiguous
+# match. Override with CODESIGN_IDENTITY.
+IDENTITY="${CODESIGN_IDENTITY:-}"
+if [ -z "$IDENTITY" ]; then
+    IDENTITY="$(security find-identity -v -p codesigning \
+        | awk '/Developer ID Application/ {print $2; exit}' || true)"
+fi
+if [ -z "$IDENTITY" ]; then
+    IDENTITY="$(security find-identity -v -p codesigning \
+        | awk '/Apple Development/ {print $2; exit}' || true)"
+fi
+if [ -z "$IDENTITY" ]; then
+    IDENTITY="-"
+    echo "warning: no signing identity found; ad-hoc signing. Privacy grants will reset on every rebuild." >&2
+fi
+
+/usr/bin/codesign --force --deep --sign "$IDENTITY" "$APP"
 
 echo
 echo "Built: $APP"
