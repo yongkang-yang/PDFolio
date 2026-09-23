@@ -24,8 +24,7 @@ let package = Package(
             path: "Sources/PDFolio",
             linkerSettings: [
                 .linkedFramework("AppKit"),
-                .linkedFramework("PDFKit"),
-                .linkedFramework("SwiftUI")
+                .linkedFramework("PDFKit")
             ]
         ),
         // XCTest / swift-testing aren't usable with Command Line Tools alone,
