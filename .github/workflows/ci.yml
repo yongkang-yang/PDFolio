@@ -1,0 +1,37 @@
+name: CI
+
+# Compile, run the tests and assemble the .app bundle on a macOS runner.
+# What this cannot cover: clicking through the UI, anything behind a privacy
+# grant (Accessibility, notifications), and the keychain on the real Mac.
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # Liquid Glass code needs the macOS 26 SDK to compile.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode
+        # The build scripts default DEVELOPER_DIR to /Applications/Xcode.app;
+        # point them at whichever Xcode the runner image selected instead.
+        run: |
+          echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          xcodebuild -version
+          swift --version
+
+      - name: Checks
+        run: swift run -c release pdfolio-checks --skip-perf
+
+      - name: Build app bundle
+        run: ./build_app.sh --no-install
