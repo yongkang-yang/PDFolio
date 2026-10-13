@@ -21,8 +21,10 @@ final class Workspace {
     var hasUnexportedChanges = false
 
     private var observers: [(Change) -> Void] = []
-    /// PDFKit documents for main-thread use (page sizes, the signing view).
-    private var documents: [SourceID: PDFDocument] = [:]
+    /// Each source page's crop-box size and own rotation, read once per
+    /// source. The grid and the reader only need these numbers, so no parsed
+    /// document stays in memory for them.
+    private var geometry: [SourceID: [(size: CGSize, rotation: Int)]] = [:]
 
     init() {
         thumbnails = ThumbnailCache(assets: assets)
@@ -97,32 +99,38 @@ final class Workspace {
 
     // MARK: Page info
 
-    func document(for source: SourceID) -> PDFDocument? {
-        if let doc = documents[source] { return doc }
-        guard let info = sources[source], let doc = SourceLoader.openDocument(info) else { return nil }
-        documents[source] = doc
-        return doc
+    /// A page from a freshly opened document, for the signing view. The page
+    /// keeps its document alive, so it is released along with the view.
+    func pdfPage(for ref: PageRef) -> PDFPage? {
+        guard let info = sources[ref.source] else { return nil }
+        return SourceLoader.openDocument(info)?.page(at: ref.pageIndex)
     }
 
-    func pdfPage(for ref: PageRef) -> PDFPage? {
-        document(for: ref.source)?.page(at: ref.pageIndex)
+    private func pageGeometry(of ref: PageRef) -> (size: CGSize, rotation: Int)? {
+        if geometry[ref.source] == nil, let info = sources[ref.source] {
+            geometry[ref.source] = autoreleasepool {
+                guard let doc = SourceLoader.openDocument(info) else { return [] }
+                return (0..<doc.pageCount).map { index in
+                    guard let page = doc.page(at: index) else { return (CGSize(width: 612, height: 792), 0) }
+                    return (page.bounds(for: .cropBox).size, page.rotation)
+                }
+            }
+        }
+        guard let pages = geometry[ref.source], pages.indices.contains(ref.pageIndex) else { return nil }
+        return pages[ref.pageIndex]
     }
 
     /// The page's size as displayed, including workspace rotation.
     func displaySize(of ref: PageRef) -> CGSize {
-        guard let page = pdfPage(for: ref) else { return CGSize(width: 612, height: 792) }
-        return PageGeometry.displaySize(
-            box: page.bounds(for: .cropBox).size,
-            rotation: page.rotation + ref.rotation
-        )
+        guard let page = pageGeometry(of: ref) else { return CGSize(width: 612, height: 792) }
+        return PageGeometry.displaySize(box: page.size, rotation: page.rotation + ref.rotation)
     }
 
     func sourceRotation(of ref: PageRef) -> Int {
-        pdfPage(for: ref)?.rotation ?? 0
+        pageGeometry(of: ref)?.rotation ?? 0
     }
 
     func purgeCaches() {
-        documents.removeAll()
         thumbnails.purge()
     }
 }

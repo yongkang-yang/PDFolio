@@ -9,13 +9,19 @@ import PDFolioCore
 ///   milliseconds each, so this is what makes a newly added file fill in fast.
 /// - Only pages whose cells are currently on screen are rendered: a request
 ///   is dropped if its cell scrolled away before its turn came.
-/// - Images are held in an `NSCache` with a byte budget, so off-screen
-///   thumbnails are released under pressure or when the budget is exceeded.
-/// - Sizes snap to a few buckets so pinch-zooming reuses renders.
+/// - Images are held in an `NSCache` with a byte budget of about three
+///   screens of thumbnails, so off-screen thumbnails are released under
+///   pressure or when the budget is exceeded.
+/// - Sizes snap to buckets so pinch-zooming reuses renders. The steps are
+///   small (about 1.2×), since a render one step too big costs that much
+///   more memory, squared.
 final class ThumbnailCache {
-    static let byteBudget = 48 * 1024 * 1024
+    static let minByteBudget = 8 * 1024 * 1024
+    static let maxByteBudget = 48 * 1024 * 1024
     // Up to 2048 px for one page per row on a large Retina window.
-    private static let buckets: [CGFloat] = [128, 192, 256, 384, 512, 768, 1024, 1536, 2048]
+    private static let buckets: [CGFloat] = [
+        128, 160, 192, 224, 256, 320, 384, 448, 512, 640, 768, 896, 1024, 1280, 1536, 1792, 2048
+    ]
 
     private let cache = NSCache<NSString, CGImageBox>()
     private let queue = OperationQueue()
@@ -25,6 +31,15 @@ final class ThumbnailCache {
     private let rendererLock = NSLock()
     /// Main thread only.
     private var sources: [SourceID: SourceInfo] = [:]
+
+    /// The color space thumbnails are rendered in: the window's display, so
+    /// Core Animation shows them without converting (and copying) each one.
+    /// Main thread only. Changing it drops every cached render.
+    var colorSpace: CGColorSpace = CGDisplayCopyColorSpace(CGMainDisplayID()) {
+        didSet {
+            if !CFEqual(colorSpace, oldValue) { cache.removeAllObjects() }
+        }
+    }
 
     private let wantedLock = NSLock()
     private var wanted: Set<String> = []
@@ -37,7 +52,7 @@ final class ThumbnailCache {
         queue.maxConcurrentOperationCount = workers
         queue.qualityOfService = .userInitiated
         queue.name = "PDFolio.thumbnails"
-        cache.totalCostLimit = Self.byteBudget
+        cache.totalCostLimit = Self.minByteBudget
     }
 
     private static func sysctlInt(_ name: String) throws -> Int {
@@ -63,8 +78,20 @@ final class ThumbnailCache {
         return body(renderer)
     }
 
+    /// Sizes the cache for a grid viewport of `pixels` device pixels: what's
+    /// on screen plus a screen either way, so scrolling back doesn't re-render.
+    func setViewport(pixels: CGFloat) {
+        let bytes = Int(pixels) * 4 * 3
+        cache.totalCostLimit = min(max(bytes, Self.minByteBudget), Self.maxByteBudget)
+    }
+
     static func bucket(for pixels: CGFloat) -> CGFloat {
         buckets.first { $0 >= pixels } ?? buckets.last!
+    }
+
+    /// Smaller sizes, largest first, to show while a sharper render loads.
+    static func bucketsBelow(_ bucket: CGFloat) -> [CGFloat] {
+        buckets.filter { $0 < bucket }.reversed()
     }
 
     static func key(for ref: PageRef, bucket: CGFloat) -> String {
@@ -96,7 +123,7 @@ final class ThumbnailCache {
         guard !alreadyQueued else { return key }
 
         guard let source = sources[ref.source] else { return key }
-        let index = ref.pageIndex, signatures = ref.signatures
+        let index = ref.pageIndex, signatures = ref.signatures, colorSpace = colorSpace
         queue.addOperation { [weak self] in
             guard let self else { return }
             self.wantedLock.lock()
@@ -106,7 +133,7 @@ final class ThumbnailCache {
             // job finds the first one's result in the cache.
             let image = stillWanted
                 ? self.cache.object(forKey: key as NSString)?.image ?? self.withRenderer {
-                    $0.render(source: source, pageIndex: index, signatures: signatures, maxPixelSize: bucket)
+                    $0.render(source: source, pageIndex: index, signatures: signatures, maxPixelSize: bucket, colorSpace: colorSpace)
                 }
                 : nil
             DispatchQueue.main.async {

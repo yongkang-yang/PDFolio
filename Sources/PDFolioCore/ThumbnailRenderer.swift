@@ -30,7 +30,15 @@ public final class ThumbnailRenderer {
     }
 
     /// Renders a page so its longest displayed side is `maxPixelSize` pixels.
-    public func render(source info: SourceInfo, pageIndex: Int, signatures: [PlacedSignature], maxPixelSize: CGFloat) -> CGImage? {
+    ///
+    /// Pass the color space of the display the image will be shown on: Core
+    /// Animation then uses the image's memory as is. For any other space
+    /// (sRGB included) it makes its own converted copy of every image on
+    /// screen, doubling what visible thumbnails cost.
+    public func render(
+        source info: SourceInfo, pageIndex: Int, signatures: [PlacedSignature], maxPixelSize: CGFloat,
+        colorSpace: CGColorSpace? = nil
+    ) -> CGImage? {
         defer {
             rendersSinceOpen += 1
             if rendersSinceOpen >= Self.rendersPerDocumentLifetime { purge() }
@@ -54,7 +62,7 @@ public final class ThumbnailRenderer {
                 height: height,
                 bitsPerComponent: 8,
                 bytesPerRow: 0,
-                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                space: colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!,
                 bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
             ) else { return nil }
             ctx.setFillColor(CGColor(gray: 1, alpha: 1))

@@ -14,24 +14,27 @@ Your source files stay unchanged: all edits apply to a page list that points int
 
 PDFolio is designed to stay light on memory and responsive, including with thousands of pages and large scanned files.
 
-Measured on an Apple Silicon MacBook (2560×1664 Retina, 4 performance cores). "Generated" pages each contain a JPEG photo, vector art and a paragraph of text. "Scanned" pages are unique A4 images at 300 dpi.
+Measured on an Apple Silicon MacBook (2560×1664 Retina, 4 performance cores), as the physical footprint Activity Monitor shows. The journal articles are JSTOR PDFs (scanned pages with a text layer). "Generated" pages each contain a JPEG photo, vector art and a paragraph of text. "Scanned" pages are unique A4 images at 300 dpi.
 
 | Scenario | Target | Measured |
 |---|---|---|
-| Empty window, idle | 40–80 MB | **25 MB** |
-| 20 generated pages from 3 files, loaded | 70–150 MB | **55 MB** |
-| Real 18-page journal article (259 KB), loaded | 70–150 MB | **57 MB** |
-| Same article, reading all 18 pages | — | **~91 MB** settled (brief peaks ~170 MB while turning pages fast); **80 MB** after leaving reading mode, stable across repeated reading |
-| 1000 generated pages, scroll top → bottom → top | < 500–700 MB | **peak 188 MB** |
-| 3000 generated pages, same scroll | — | **peak 210 MB** |
+| Empty window, idle | 40–80 MB | **21 MB** |
+| 5-page journal article (332 KB), loaded | 70–150 MB | **27 MB** (was 69 MB) |
+| 59 pages from 3 journal articles, loaded | 70–150 MB | **30 MB** (was 97 MB) |
+| Same 59 pages, scroll top → bottom → top | — | **peak 59 MB** (was 138 MB) |
+| 999-page scanned PDF (28 MB), loaded | — | **30 MB** (was 57 MB) |
+| Same 999 pages, scroll top → bottom → top | < 500–700 MB | **peak 38 MB** (was 128 MB) |
+| Reading a 37-page scanned article | — | **~55 MB** settled, brief peak ~110 MB on entering reading mode |
 | Add a 40-page scanned PDF: all visible thumbnails shown | responsive | **~120–200 ms** (was ~540 ms with a single render queue) |
 | Export 1000 generated pages (default / flattened) | responsive | **0.9 s / 0.9 s**, footprint < 50 MB |
 | Flattened export, 120 scanned pages (270 MB) | bounded | **288 MB** peak (was 759 MB, growing ~5.5 MB per page) |
 
 How it stays light:
 
-- The workspace stores **page references** (source, page index, rotation, signatures); page content stays in the source files
-- **Thumbnails** render lazily, only for cells on screen, on a few parallel workers (one per performance core, up to 4). Each worker has its own documents. Requests for cells that scroll away are dropped before rendering. Sizes snap to a few buckets, images live in an `NSCache` with a 48 MB budget, and rotation is a layer transform, so a rotated page reuses its existing thumbnail.
+- The workspace stores **page references** (source, page index, rotation, signatures); page content stays in the source files. Page sizes and rotations are read once per file into a small table, so no parsed document stays open for the grid or the reader.
+- **Freed memory goes back to the system.** Rendering a page allocates and frees multi-MB decode buffers, and the system allocator keeps freed large blocks for reuse (about 35 MB after one short article). The app turns that cache off at launch (`MallocLargeCache=0`), which can only be done from the environment, so `main` sets it and re-executes itself once.
+- **Thumbnails are rendered in the display's color space.** For any other color space, sRGB included, Core Animation makes its own converted copy of every image on screen. Rendered for the display, the single copy is shared with the window server and no longer counts against the app, so the numbers above slightly understate what visible thumbnails cost the system as a whole. Moving the window to a display with a different profile re-renders them.
+- **Thumbnails** render lazily, only for cells on screen, on a few parallel workers (one per performance core, up to 4). Each worker has its own documents. Requests for cells that scroll away are dropped before rendering. Sizes snap to buckets, images live in an `NSCache` budgeted at about three screens of thumbnails (8-48 MB), and rotation is a layer transform, so a rotated page reuses its existing thumbnail.
 - **Reading mode** is a lightweight custom view that draws pages as vector content, only for the area on screen, from documents it opens on entry and releases on exit. Apple's `PDFView` was tried first, but it loads a machine-learning model and caches that are never freed: reading an 18-page, 259 KB journal article took the app to ~350 MB, rising to 677 MB after entering and leaving reading mode four times.
 - The **signing view** also draws the page as vector content on demand, sized to what is on screen.
 - PDFKit caches each drawn page's decoded images inside its document (tens of MB per scanned page), so the thumbnail workers, the reader and the exporter all release and reopen their documents periodically.
@@ -110,6 +113,7 @@ It covers:
 Two launch arguments help check the UI end to end:
 
 - `--scroll-benchmark --quit <files…>`: scrolls the whole grid down and back up, prints peak memory, then quits
+- `--read <files…>`: opens straight into reading mode, to measure its memory with `footprint`
 - `--snapshot <dir> <files…>`: renders the main window, the signing sheet, the signature pad and reading mode to PNGs. This works without Screen Recording permission.
 
 ## Project layout

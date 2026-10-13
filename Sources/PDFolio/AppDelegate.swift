@@ -30,6 +30,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if benchmark {
             controller.runScrollBenchmark(quitAfter: args.contains("--quit"))
         }
+        if args.contains("--read") {
+            // Start in reading mode, for measuring it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if let first = controller.workspace.pages.first { controller.openReader(pageID: first.id) }
+            }
+        }
         if let i = args.firstIndex(of: "--snapshot"), args.index(after: i) < args.endIndex {
             controller.runSnapshot(into: URL(fileURLWithPath: args[args.index(after: i)]))
         }

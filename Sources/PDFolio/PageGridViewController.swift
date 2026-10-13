@@ -160,10 +160,49 @@ final class PageGridViewController: NSViewController {
         ])
         view = root
         updateEmptyState()
+
+        // The clip view is sized by the scroll view's own tiling, which runs
+        // after `viewDidLayout` and again whenever the scroller appears, so
+        // follow it directly rather than relying on our view's layout pass.
+        scrollView.contentView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(viewportDidChange(_:)),
+            name: NSView.frameDidChangeNotification, object: scrollView.contentView
+        )
+        for name in [NSWindow.didChangeScreenNotification, NSWindow.didChangeScreenProfileNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(windowScreenDidChange(_:)), name: name, object: nil)
+        }
+    }
+
+    @objc private func viewportDidChange(_ note: Notification) {
+        refitIfViewportChanged()
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        adoptWindowColorSpace()
+    }
+
+    @objc private func windowScreenDidChange(_ note: Notification) {
+        guard note.object as? NSWindow === view.window else { return }
+        adoptWindowColorSpace()
+    }
+
+    /// Thumbnails are rendered for the display the window is on; re-render
+    /// them when it moves to a display with a different profile.
+    private func adoptWindowColorSpace() {
+        guard let space = view.window?.colorSpace?.cgColorSpace,
+              !CFEqual(space, workspace.thumbnails.colorSpace) else { return }
+        workspace.thumbnails.colorSpace = space
+        reloadVisibleThumbnails()
     }
 
     override func viewDidLayout() {
         super.viewDidLayout()
+        refitIfViewportChanged()
+    }
+
+    private func refitIfViewportChanged() {
         // Column widths depend on the viewport, so re-fit on window resize.
         let size = scrollView.contentView.bounds.size
         if abs(size.width - lastLayoutSize.width) > 0.5 || abs(size.height - lastLayoutSize.height) > 0.5 {
@@ -287,6 +326,9 @@ final class PageGridViewController: NSViewController {
         let maxThumbHeight = max(visibleHeight - insets.top - insets.bottom - Self.labelHeight, 80)
         let thumbHeight = min((thumbWidth * 1.3).rounded(), maxThumbHeight)
 
+        let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        workspace.thumbnails.setViewport(pixels: viewport.width * viewport.height * scale * scale)
+
         let anchor = collectionView.indexPathsForVisibleItems().min()
         layout.itemSize = NSSize(width: width, height: thumbHeight + Self.labelHeight)
         layout.invalidateLayout()
@@ -294,6 +336,10 @@ final class PageGridViewController: NSViewController {
             collectionView.scrollToItems(at: [anchor], scrollPosition: .top)
         }
         // Visible cells may now need a sharper render.
+        reloadVisibleThumbnails()
+    }
+
+    private func reloadVisibleThumbnails() {
         for case let item as PageItem in collectionView.visibleItems() {
             if let path = collectionView.indexPath(for: item) {
                 loadThumbnail(for: item, at: path.item)
@@ -349,12 +395,6 @@ final class PageGridViewController: NSViewController {
                                   self.workspace.pages.count, Date().timeIntervalSince(start), peak, (Double(MemoryFootprint.bytes()) / 1_048_576)))
             }
         }
-    }
-}
-
-extension ThumbnailCache {
-    static func bucketsBelow(_ bucket: CGFloat) -> [CGFloat] {
-        [1536, 1024, 768, 512, 384, 256, 192, 128].filter { $0 < bucket }
     }
 }
 
