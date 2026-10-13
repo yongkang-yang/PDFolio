@@ -135,6 +135,8 @@ fi
 rm -rf "$INSTALL_DIR"
 ditto "$APP" "$INSTALL_DIR"
 echo "    installed $INSTALL_DIR"
+# Drop the repo copy so Spotlight and Launchpad list the app once.
+rm -rf "$APP"
 
 if [ "$WAS_RUNNING" = 1 ]; then
     open "$INSTALL_DIR"
